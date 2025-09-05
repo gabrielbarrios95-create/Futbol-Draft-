@@ -88,14 +88,6 @@
         }
         .team-name-card {
             @apply flex justify-between items-center p-4 bg-gray-700 rounded-xl shadow-md mb-2;
-            border: 2px solid transparent;
-            transition: border-color 0.2s, transform 0.2s;
-        }
-        .team-name-card:hover {
-            transform: translateY(-2px);
-        }
-        .team-name-card.selected {
-            @apply border-2;
         }
         .trade-market {
             transition: all 0.5s ease-in-out;
@@ -108,71 +100,62 @@
             opacity: 1;
             pointer-events: all;
         }
-        .message-box {
-            animation: fadeIn 0.5s ease-in-out;
-            z-index: 100;
-        }
-        @keyframes fadeIn {
-            from { opacity: 0; }
-            to { opacity: 1; }
-        }
     </style>
 </head>
 <body class="p-4 sm:p-8">
 
-    <!-- Message Box UI -->
-    <div id="messageBox" class="fixed inset-0 bg-black bg-opacity-80 hidden flex items-center justify-center p-4">
-        <div class="bg-gray-800 rounded-2xl p-8 max-w-sm w-full text-center shadow-2xl message-box">
+    <!-- Mensajes y Modals -->
+    <div id="messageBox" class="fixed inset-0 bg-black bg-opacity-80 hidden flex items-center justify-center p-4 z-50">
+        <div class="bg-gray-800 rounded-2xl p-8 max-w-sm w-full text-center shadow-2xl">
             <p id="messageText" class="text-white text-lg font-bold mb-6"></p>
             <button id="messageOkButton" class="px-6 py-3 bg-blue-600 text-white rounded-full font-bold bid-button hover:bg-blue-700 w-full">OK</button>
         </div>
     </div>
-
-    <!-- Team Creation & Selection Screen -->
-    <div id="team-selection-screen" class="min-h-screen flex flex-col items-center justify-center p-4 text-center">
-        <h1 class="text-4xl sm:text-5xl font-bold mb-6 text-teal-400">Configuración del Draft</h1>
-        <p class="text-gray-400 text-lg mb-8">Crea entre 2 y 10 equipos y luego selecciona el tuyo para comenzar.</p>
-        
-        <div class="bg-gray-800 rounded-3xl p-6 sm:p-10 shadow-2xl w-full max-w-xl">
-            <div class="flex items-center justify-between mb-4 bg-gray-700 p-4 rounded-xl">
-                <span class="text-lg font-semibold text-white">Participantes en línea: <span id="online-count" class="text-green-400">0</span></span>
-                <span id="user-id" class="text-xs text-gray-400 break-all"></span>
+    
+    <div id="endDraftModal" class="fixed inset-0 bg-black bg-opacity-80 hidden flex items-center justify-center p-4 z-50">
+        <div class="bg-gray-800 rounded-2xl p-8 max-w-sm w-full text-center shadow-2xl">
+            <p class="text-white text-lg font-bold mb-4">¿Estás seguro de que quieres finalizar el draft?</p>
+            <p class="text-gray-400 mb-6">Por favor, introduce el código para confirmar:</p>
+            <input type="password" id="endDraftCodeInput" class="w-full p-3 rounded-xl bg-gray-700 text-white text-center border border-gray-600 focus:outline-none focus:ring-2 focus:ring-red-500 mb-4" placeholder="Código de 4 dígitos">
+            <div class="flex space-x-4">
+                <button onclick="confirmEndDraft()" class="w-1/2 px-6 py-3 bg-red-600 text-white rounded-full font-bold bid-button hover:bg-red-700">Finalizar</button>
+                <button onclick="closeEndDraftModal()" class="w-1/2 px-6 py-3 bg-gray-600 text-white rounded-full font-bold bid-button hover:bg-gray-700">Cancelar</button>
             </div>
-            
-            <h2 class="text-2xl font-bold mb-4 text-blue-400">Crear Equipos</h2>
-            <div class="flex flex-col space-y-4 mb-6">
-                <div class="flex flex-col sm:flex-row space-y-4 sm:space-y-0 sm:space-x-4">
-                    <input type="password" id="adminCodeInput" placeholder="Código de administrador..." class="flex-grow p-3 rounded-xl bg-gray-700 text-white border border-gray-600 focus:outline-none focus:ring-2 focus:ring-yellow-500">
-                    <button onclick="validateAdminCode()" class="px-6 py-3 bg-yellow-600 text-white rounded-full font-bold bid-button hover:bg-yellow-700">Validar Código</button>
-                </div>
-                <div id="adminMessage" class="text-green-400 text-center font-semibold hidden">¡Acceso de administrador concedido!</div>
-            </div>
-
-            <div class="flex flex-col sm:flex-row space-y-4 sm:space-y-0 sm:space-x-4 mb-6">
-                <input type="text" id="newTeamNameInput" placeholder="Nombre del equipo..." class="flex-grow p-3 rounded-xl bg-gray-700 text-white border border-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-500" disabled>
-                <button onclick="addTeam()" id="addTeamButton" class="px-6 py-3 bg-green-600 text-white rounded-full font-bold bid-button hover:bg-green-700" disabled>Agregar Equipo</button>
-            </div>
-            
-            <div id="teamListContainer" class="max-h-60 overflow-y-auto mb-6">
-                <!-- Team cards will be generated here -->
-            </div>
-            
-            <button id="startGameButton" onclick="startGame()" class="w-full px-6 py-3 bg-teal-600 text-white rounded-full font-bold bid-button hover:bg-teal-700" disabled>
-                Comenzar Draft
-            </button>
         </div>
     </div>
 
-    <!-- Main Game Screen -->
+    <!-- Pantalla de Creación y Selección de Equipo -->
+    <div id="team-selection-screen" class="min-h-screen flex flex-col items-center justify-center p-4 text-center">
+        <h1 class="text-4xl sm:text-5xl font-bold mb-6 text-teal-400">Configuración del Draft</h1>
+        <p class="text-gray-400 text-lg mb-8">Crea equipos y luego selecciona el tuyo para empezar.</p>
+        
+        <div class="bg-gray-800 rounded-3xl p-6 sm:p-10 shadow-2xl w-full max-w-xl">
+            <h2 class="text-2xl font-bold mb-4 text-blue-400">Crear Equipos</h2>
+
+            <div class="flex flex-col sm:flex-row space-y-4 sm:space-y-0 sm:space-x-4 mb-6">
+                <input type="text" id="newTeamNameInput" placeholder="Nombre del equipo..." class="flex-grow p-3 rounded-xl bg-gray-700 text-white border border-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-500">
+                <button onclick="addTeam()" class="px-6 py-3 bg-green-600 text-white rounded-full font-bold bid-button hover:bg-green-700">Agregar Equipo</button>
+            </div>
+            
+            <div id="teamListContainer" class="max-h-60 overflow-y-auto mb-6">
+                <!-- Las tarjetas de equipo se generarán aquí -->
+            </div>
+            
+            <button onclick="startGame()" class="w-full px-6 py-3 bg-teal-600 text-white rounded-full font-bold bid-button hover:bg-teal-700">Comenzar Draft</button>
+        </div>
+    </div>
+
+    <!-- Pantalla de Juego Principal -->
     <div id="game-screen" class="container mx-auto hidden">
-        <header class="text-center mb-10">
+        <header class="text-center mb-10 relative">
             <h1 class="text-3xl sm:text-5xl font-bold mb-2 bg-clip-text text-transparent bg-gradient-to-r from-teal-400 to-blue-600">
                 Draft de Subasta FC 24
             </h1>
             <p class="text-gray-400 text-lg">Puja por los mejores jugadores y construye tu equipo.</p>
+            <button onclick="showEndDraftModal()" class="absolute top-0 right-0 px-4 py-2 bg-red-600 text-white text-sm rounded-full font-bold bid-button hover:bg-red-700">Finalizar Draft</button>
         </header>
 
-        <!-- Current Auction Section -->
+        <!-- Sección de Subasta Actual -->
         <div class="bg-gray-800 rounded-3xl p-6 sm:p-10 mb-12 shadow-2xl">
             <h2 class="text-3xl font-bold mb-6 text-center text-teal-300">Subasta Actual</h2>
             <div id="auctionInfo" class="text-center">
@@ -197,7 +180,7 @@
             </div>
         </div>
 
-        <!-- Bidding Controls Section (Single for selected team) -->
+        <!-- Sección de Controles de Puja (Única para el equipo seleccionado) -->
         <div class="bg-gray-800 rounded-3xl p-6 sm:p-10 mb-12 shadow-2xl flex flex-col items-center">
             <h2 class="text-3xl font-bold mb-4 text-teal-300">Puja de <span id="myTeamName" class="text-blue-400"></span></h2>
             <p id="myTeamBudget" class="text-gray-400 mb-6">Presupuesto: --</p>
@@ -209,20 +192,20 @@
             </div>
         </div>
         
-        <!-- Roster Section -->
+        <!-- Sección de Plantilla -->
         <h2 class="text-3xl font-bold text-center mb-8 text-white">Jugadores Seleccionados</h2>
         <div id="rosterContainer" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-            <!-- Rosters will be generated here dynamically -->
+            <!-- Las plantillas se generarán aquí dinámicamente -->
         </div>
 
-        <!-- Trade/Sell Section -->
+        <!-- Sección de Intercambio/Venta -->
         <div id="tradeMarket" class="trade-market bg-gray-800 rounded-3xl p-6 sm:p-10 mt-12 shadow-2xl">
             <h2 class="text-3xl font-bold mb-6 text-center text-yellow-300">Mercado de Fichajes</h2>
             <div id="tradeControlsContainer" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-                <!-- Trade controls will be generated here dynamically -->
+                <!-- Los controles de intercambio se generarán aquí dinámicamente -->
             </div>
 
-            <!-- Trade Modal UI -->
+            <!-- Modal de Intercambio -->
             <div id="tradeModal" class="hidden fixed inset-0 bg-black bg-opacity-80 flex items-center justify-center p-4">
                 <div class="bg-gray-900 rounded-xl p-8 max-w-lg w-full">
                     <h3 class="text-2xl font-bold mb-4 text-center text-yellow-300">Proponer Intercambio</h3>
@@ -244,24 +227,7 @@
         </div>
     </div>
 
-    <!-- Firebase CDN imports -->
-    <script type="module">
-        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
-        import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-        import { getFirestore, doc, getDoc, setDoc, onSnapshot, collection, getDocs, runTransaction, updateDoc, setLogLevel } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
-        
-        setLogLevel('debug');
-
-        // Global variables provided by the Canvas environment
-        const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
-        const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : {};
-        const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
-
-        const app = initializeApp(firebaseConfig);
-        const db = getFirestore(app);
-        const auth = getAuth(app);
-        
-        // --- Game State Variables ---
+    <script>
         const players = {
             goalkeepers: [
                 { name: 'Thibaut Courtois', pos: 'POR', price: 90000000, value: 90000000, country: 'Bélgica', countryCode: 'BE', img: 'https://cdn.futbin.com/content/fifa24/players/192119.png' },
@@ -348,28 +314,21 @@
         };
 
         let allPlayers = [...players.goalkeepers, ...players.defenders, ...players.midfielders, ...players.forwards];
+        let teams = [];
+        let selectedTeamName = null;
         let currentAuctionPlayer = null;
         let highestBid = 0;
         let highestBidder = null;
+        let countdownTimer;
         let playersDraftedCount = 0;
-        
-        let teams = [];
-        let selectedTeamName = '';
-        let isAdmin = false;
 
         const newTeamNameInput = document.getElementById('newTeamNameInput');
-        const addTeamButton = document.getElementById('addTeamButton');
         const teamListContainer = document.getElementById('teamListContainer');
-        const startGameButton = document.getElementById('startGameButton');
         const teamSelectionScreen = document.getElementById('team-selection-screen');
         const gameScreen = document.getElementById('game-screen');
         const rosterContainer = document.getElementById('rosterContainer');
         const tradeControlsContainer = document.getElementById('tradeControlsContainer');
-        const adminCodeInput = document.getElementById('adminCodeInput');
-        const adminMessage = document.getElementById('adminMessage');
         const tradeMarket = document.getElementById('tradeMarket');
-        const onlineCountEl = document.getElementById('online-count');
-        const userIdEl = document.getElementById('user-id');
 
         const auctionInfo = document.getElementById('auctionInfo');
         const playerImageElem = document.getElementById('playerImage');
@@ -394,278 +353,78 @@
         const messageText = document.getElementById('messageText');
         const messageOkButton = document.getElementById('messageOkButton');
         
-        let countdownTimer;
+        const endDraftModal = document.getElementById('endDraftModal');
+        const endDraftCodeInput = document.getElementById('endDraftCodeInput');
+
         let playerToTrade = null;
         let playerToTradeTeamName = null;
-        
-        let userId = null;
-        let isAuthReady = false;
-        const assignedColors = [
-            '#ef4444', '#f97316', '#f59e0b', '#eab308', '#84cc16', '#22c55e', '#10b981', '#06b6d4',
-            '#0ea5e9', '#3b82f6', '#6366f1', '#8b5cf6', '#a855f7', '#d946ef', '#ec4899', '#f43f5e'
-        ];
 
-        // --- Core Functions ---
-        
         function showMessage(text) {
             messageText.textContent = text;
             messageBox.classList.remove('hidden');
         }
-        window.showMessage = showMessage;
 
         function hideMessage() {
             messageBox.classList.add('hidden');
         }
-        window.hideMessage = hideMessage;
 
         messageOkButton.addEventListener('click', hideMessage);
-        
+
         function formatPrice(price) {
             return new Intl.NumberFormat('es-ES', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }).format(price);
         }
-        window.formatPrice = formatPrice;
 
         function getTeamByName(name) {
             return teams.find(t => t.name === name);
         }
-        window.getTeamByName = getTeamByName;
 
-        // --- Firebase Integration ---
-        const initApp = async () => {
-            try {
-                if (initialAuthToken) {
-                    await signInWithCustomToken(auth, initialAuthToken);
-                } else {
-                    await signInAnonymously(auth);
-                }
-
-                onAuthStateChanged(auth, async (user) => {
-                    if (user) {
-                        userId = user.uid;
-                        isAuthReady = true;
-                        userIdEl.textContent = `Tu ID: ${userId}`;
-                        
-                        const userPresenceRef = doc(db, 'artifacts', appId, 'public', 'data', 'presence', userId);
-                        await setDoc(userPresenceRef, { online: true, lastSeen: new Date(), selectedTeam: null }, { merge: true });
-
-                        setupListeners();
-                    } else {
-                        console.log('No user is signed in.');
-                    }
-                });
-
-            } catch (error) {
-                console.error('Error durante la inicialización de Firebase:', error);
-                showMessage('Error al conectar con la base de datos. Intenta recargar la página.');
-            }
-        };
-
-        const setupListeners = () => {
-            if (!isAuthReady) {
-                return;
-            }
-
-            // Listen for all users' presence
-            const presenceRef = collection(db, 'artifacts', appId, 'public', 'data', 'presence');
-            onSnapshot(presenceRef, (snapshot) => {
-                const onlineUsers = [];
-                const selectedTeamsData = {};
-                
-                snapshot.docs.forEach(doc => {
-                    const data = doc.data();
-                    if (data.online) {
-                        onlineUsers.push(doc.id);
-                    }
-                    if (data.selectedTeam) {
-                        selectedTeamsData[data.selectedTeam] = {
-                            userId: doc.id,
-                            color: data.color || '#e2e8f0'
-                        };
-                    }
-                });
-                
-                onlineCountEl.textContent = onlineUsers.length;
-                renderTeamList(selectedTeamsData, onlineUsers.length);
-            });
-            
-            // Listen for teams list
-            const teamsRef = collection(db, 'artifacts', appId, 'public', 'data', 'teams');
-            onSnapshot(teamsRef, (snapshot) => {
-                teams = snapshot.docs.map(doc => doc.data());
-                renderTeamList();
-            });
-        };
-        window.setupListeners = setupListeners;
-
-        const updateFirebaseTeams = async () => {
-            if (!isAdmin) return;
-             const teamsRef = collection(db, 'artifacts', appId, 'public', 'data', 'teams');
-             try {
-                 // Use a transaction to update teams to prevent race conditions
-                 await runTransaction(db, async (transaction) => {
-                     // First, fetch all current team docs to clear them
-                     const currentTeamsSnapshot = await getDocs(teamsRef);
-                     currentTeamsSnapshot.docs.forEach(doc => {
-                         transaction.delete(doc.ref);
-                     });
-                     
-                     // Then, add the new teams
-                     teams.forEach((team, index) => {
-                         const newTeamRef = doc(teamsRef, `${index}`);
-                         transaction.set(newTeamRef, team);
-                     });
-                 });
-                 console.log("Teams updated in Firebase successfully.");
-             } catch (error) {
-                 console.error("Error updating teams in Firestore:", error);
-                 showMessage("Error al guardar los equipos. Inténtalo de nuevo.");
-             }
-        }
-        window.updateFirebaseTeams = updateFirebaseTeams;
-        
-        // --- Team Creation & Selection ---
-        function renderTeamList(selectedTeamsData = {}, onlineUsersCount = 0) {
+        function renderTeamList() {
             teamListContainer.innerHTML = '';
-            let selectedCount = 0;
-            let myTeamIsSelected = false;
-
             teams.forEach(team => {
-                const teamData = selectedTeamsData[team.name] || {};
-                const isSelected = !!teamData.userId;
-                const isMine = teamData.userId === userId;
-                
-                if (isSelected) {
-                    selectedCount++;
-                }
-
-                if (isMine) {
-                    myTeamIsSelected = true;
-                    selectedTeamName = team.name;
-                }
-                
                 const teamCard = document.createElement('div');
-                teamCard.className = `team-name-card ${isMine ? 'selected' : ''}`;
-                if(isSelected) {
-                    teamCard.style.borderColor = teamData.color;
-                }
-                
-                let selectButtonHTML = '';
-                if (!isSelected || isMine) {
-                    selectButtonHTML = `<button onclick="selectTeam('${team.name}')" class="px-3 py-1 bg-blue-500 hover:bg-blue-600 text-white text-sm rounded-full">
-                        ${isMine ? 'Seleccionado' : 'Seleccionar'}
-                    </button>`;
-                } else {
-                    selectButtonHTML = `<span class="px-3 py-1 bg-gray-500 text-white text-sm rounded-full">Tomado</span>`;
-                }
-
+                teamCard.className = `team-name-card ${team.name === selectedTeamName ? 'selected' : ''}`;
                 teamCard.innerHTML = `
-                    <span class="font-bold text-xl text-white">${team.name}</span>
-                    <div class="flex items-center space-x-2">
-                        ${selectButtonHTML}
-                        ${isAdmin ? `<button onclick="deleteTeam('${team.name}')" class="px-3 py-1 bg-red-500 hover:bg-red-600 text-white text-sm rounded-full">
-                            Eliminar
-                        </button>` : ''}
-                    </div>
+                    <span class="font-bold text-xl">${team.name}</span>
+                    <button onclick="selectTeam('${team.name}')" class="px-3 py-1 bg-blue-500 hover:bg-blue-600 text-white text-sm rounded-full">
+                        ${team.name === selectedTeamName ? 'Seleccionado' : 'Seleccionar'}
+                    </button>
                 `;
                 teamListContainer.appendChild(teamCard);
             });
-
-            if (isAdmin) {
-                startGameButton.disabled = teams.length < 2 || selectedCount !== onlineUsersCount || onlineUsersCount === 0;
-            } else {
-                startGameButton.disabled = !myTeamIsSelected || teams.length === 0;
-            }
-
-            const newTeamNameInput = document.getElementById('newTeamNameInput');
-            const addTeamButton = document.getElementById('addTeamButton');
-            newTeamNameInput.disabled = !isAdmin;
-            addTeamButton.disabled = !isAdmin;
         }
-        window.renderTeamList = renderTeamList;
-
-        function validateAdminCode() {
-            if (adminCodeInput.value === '0590') {
-                isAdmin = true;
-                adminMessage.classList.remove('hidden');
-                showMessage('¡Acceso de administrador concedido!');
-            } else {
-                showMessage('Código de administrador incorrecto.');
-                isAdmin = false;
-            }
-            renderTeamList();
-        }
-        window.validateAdminCode = validateAdminCode;
 
         function addTeam() {
-            if (!isAdmin) return;
             const teamName = newTeamNameInput.value.trim();
-            if (!teamName || getTeamByName(teamName) || teams.length >= 10) {
-                showMessage('Entrada inválida o ya existe un equipo con este nombre o el límite de 10 ha sido alcanzado.');
+            if (!teamName || getTeamByName(teamName)) {
+                showMessage('Entrada inválida o ya existe un equipo con este nombre.');
                 return;
             }
             teams.push({ name: teamName, budget: 1500000000, roster: [] });
             newTeamNameInput.value = '';
-            updateFirebaseTeams();
+            renderTeamList();
         }
-        window.addTeam = addTeam;
 
-        function deleteTeam(teamName) {
-            if (!isAdmin) return;
-            teams = teams.filter(t => t.name !== teamName);
-            updateFirebaseTeams();
+        function selectTeam(teamName) {
+            selectedTeamName = teamName;
+            showMessage(`Has seleccionado a ${teamName}.`);
+            renderTeamList();
         }
-        window.deleteTeam = deleteTeam;
 
-        const selectTeam = async (teamName) => {
-            const userRef = doc(db, 'artifacts', appId, 'public', 'data', 'presence', userId);
-            try {
-                await runTransaction(db, async (transaction) => {
-                    const userSnap = await transaction.get(userRef);
-                    const userData = userSnap.data();
-
-                    const presenceQuery = await getDocs(collection(db, 'artifacts', appId, 'public', 'data', 'presence'));
-                    let isTeamTaken = false;
-                    presenceQuery.docs.forEach(d => {
-                        if (d.data().selectedTeam === teamName && d.id !== userId) {
-                            isTeamTaken = true;
-                        }
-                    });
-
-                    if (isTeamTaken) {
-                        showMessage(`El equipo ${teamName} ya ha sido seleccionado por otro usuario.`);
-                    } else {
-                        const userColor = assignedColors[Math.floor(Math.random() * assignedColors.length)];
-                        transaction.update(userRef, { selectedTeam: teamName, color: userColor });
-                        selectedTeamName = teamName;
-                        showMessage(`Has seleccionado a ${teamName}.`);
-                    }
-                });
-            } catch (error) {
-                console.error('Error al seleccionar equipo:', error);
-                showMessage('Error al seleccionar el equipo. Inténtalo de nuevo.');
+        function startGame() {
+            if (teams.length === 0) {
+                showMessage('Crea al menos un equipo para empezar.');
+                return;
             }
-        };
-        window.selectTeam = selectTeam;
-
-        async function startGame() {
-            if (!isAdmin) return;
-            const onlineCount = parseInt(onlineCountEl.textContent);
-            const selectedCount = (await getDocs(collection(db, 'artifacts', appId, 'public', 'data', 'presence'))).docs.filter(d => d.data().selectedTeam).length;
-            
-            if (onlineCount === 0 || selectedCount !== onlineCount) {
-                 showMessage('Todos los usuarios deben seleccionar un equipo para comenzar.');
-                 return;
+            if (!selectedTeamName) {
+                showMessage('Selecciona tu equipo para empezar.');
+                return;
             }
 
             teamSelectionScreen.classList.add('hidden');
             gameScreen.classList.remove('hidden');
-            
             renderGameUI();
-            updateBudgets();
-            updateTradeControls();
             startNewAuction();
         }
-        window.startGame = startGame;
 
         function renderGameUI() {
             rosterContainer.innerHTML = '';
@@ -675,7 +434,6 @@
             
             teams.forEach(team => {
                 const rosterCard = document.createElement('div');
-                rosterCard.id = `roster-${team.name.replace(/\s/g, '')}-card`;
                 rosterCard.className = `bg-gray-900 rounded-2xl p-6 shadow-inner-xl team-roster ${team.name === selectedTeamName ? 'selected' : ''}`;
                 rosterCard.innerHTML = `
                     <h3 class="text-xl font-bold mb-4 text-center text-white">${team.name}</h3>
@@ -685,7 +443,6 @@
                 rosterContainer.appendChild(rosterCard);
 
                 const tradeControls = document.createElement('div');
-                tradeControls.id = `trade-${team.name.replace(/\s/g, '')}-controls`;
                 tradeControls.className = `bg-gray-700 rounded-xl p-4 flex flex-col space-y-3`;
                 tradeControls.innerHTML = `
                     <h4 class="text-lg font-semibold text-white">${team.name}</h4>
@@ -699,7 +456,6 @@
             });
             renderRosters();
         }
-        window.renderGameUI = renderGameUI;
 
         function updateBudgets() {
             teams.forEach(team => {
@@ -712,7 +468,6 @@
                 myTeamBudgetElem.textContent = `Presupuesto: ${formatPrice(getTeamByName(selectedTeamName).budget)}`;
             }
         }
-        window.updateBudgets = updateBudgets;
 
         function renderRosters() {
             teams.forEach(team => {
@@ -739,48 +494,36 @@
                     team.roster.forEach((player, index) => {
                         const option = document.createElement('option');
                         option.value = index;
-                        option.textContent = `${player.name} (${player.pos})`;
+                        option.textContent = `${player.name} (${player.pos}) - Valor ${formatPrice(player.value)}`;
                         tradeSelect.appendChild(option);
                     });
                 }
             });
             updateTradeControls();
-            highlightSelectedTeam();
         }
-        window.renderRosters = renderRosters;
-
-        function highlightSelectedTeam() {
-            teams.forEach(team => {
-                const rosterCard = document.getElementById(`roster-${team.name.replace(/\s/g, '')}-card`);
-                if (team.name === selectedTeamName) {
-                    rosterCard.classList.add('selected');
-                } else {
-                    rosterCard.classList.remove('selected');
-                }
-            });
-        }
-        window.highlightSelectedTeam = highlightSelectedTeam;
         
         function updateTradeControls() {
             teams.forEach(team => {
-                const controls = document.getElementById(`trade-player-${team.name.replace(/\s/g, '')}`).closest('div');
-                const sellButton = controls.querySelector('button.bg-red-600');
-                const tradeButton = controls.querySelector('button.bg-yellow-600');
-                const select = controls.querySelector('select');
-                if (team.name === selectedTeamName) {
-                    if (sellButton) sellButton.disabled = false;
-                    if (tradeButton) tradeButton.disabled = false;
-                    if (select) select.disabled = false;
-                    controls.style.opacity = '1';
-                } else {
-                    if (sellButton) sellButton.disabled = true;
-                    if (tradeButton) tradeButton.disabled = true;
-                    if (select) select.disabled = true;
-                    controls.style.opacity = '0.5';
+                const controls = document.getElementById(`trade-player-${team.name.replace(/\s/g, '')}`);
+                if (controls) {
+                    const parentDiv = controls.closest('div');
+                    const sellButton = parentDiv.querySelector('button.bg-red-600');
+                    const tradeButton = parentDiv.querySelector('button.bg-yellow-600');
+                    const select = parentDiv.querySelector('select');
+                    if (team.name === selectedTeamName) {
+                        if (sellButton) sellButton.disabled = false;
+                        if (tradeButton) tradeButton.disabled = false;
+                        if (select) select.disabled = false;
+                        parentDiv.style.opacity = '1';
+                    } else {
+                        if (sellButton) sellButton.disabled = true;
+                        if (tradeButton) tradeButton.disabled = true;
+                        if (select) select.disabled = true;
+                        parentDiv.style.opacity = '0.5';
+                    }
                 }
             });
         }
-        window.updateTradeControls = updateTradeControls;
         
         function toggleTradeMarket(show) {
             if (show) {
@@ -789,7 +532,6 @@
                 tradeMarket.classList.remove('active');
             }
         }
-        window.toggleTradeMarket = toggleTradeMarket;
 
         function startCountdown() {
             clearInterval(countdownTimer);
@@ -813,7 +555,6 @@
                 }
             }, 1000);
         }
-        window.startCountdown = startCountdown;
 
         function startNewAuction() {
             if (playersDraftedCount > 0 && playersDraftedCount % 6 === 0) {
@@ -853,12 +594,11 @@
             currentBidderElem.textContent = `Última oferta: ${highestBidder}`;
             
             nextPlayerButton.disabled = true;
-            revealButton.disabled = !isAdmin;
+            revealButton.disabled = false;
             myBidInput.value = '';
 
             startCountdown();
         }
-        window.startNewAuction = startNewAuction;
 
         function placeBid() {
             if (!currentAuctionPlayer) {
@@ -875,7 +615,6 @@
 
             handleBid(selectedTeamName, bidAmount);
         }
-        window.placeBid = placeBid;
 
         function bidCurrentPrice() {
             if (!currentAuctionPlayer) {
@@ -884,7 +623,6 @@
             }
             handleBid(selectedTeamName, highestBid + 1000000);
         }
-        window.bidCurrentPrice = bidCurrentPrice;
 
         function bidPlus2M() {
             if (!currentAuctionPlayer) {
@@ -893,7 +631,6 @@
             }
             handleBid(selectedTeamName, highestBid + 2000000);
         }
-        window.bidPlus2M = bidPlus2M;
 
         function handleBid(teamName, bidAmount) {
             const team = getTeamByName(teamName);
@@ -916,18 +653,13 @@
             
             startCountdown();
         }
-        window.handleBid = handleBid;
 
         function revealAndEndAuction() {
-            if (!isAdmin) {
-                showMessage('Solo el administrador puede revelar al jugador.');
-                return;
-            }
-            clearInterval(countdownTimer);
             if (!currentAuctionPlayer || highestBidder === 'Nadie') {
                 showMessage('No hay ofertas para este jugador. Inicia una nueva subasta.');
                 return;
             }
+            clearInterval(countdownTimer);
 
             currentPlayerNameElem.textContent = currentAuctionPlayer.name;
             currentPlayerNameElem.classList.remove('hidden-name');
@@ -955,9 +687,8 @@
             nextPlayerButton.disabled = false;
             revealButton.disabled = true;
         }
-        window.revealAndEndAuction = revealAndEndAuction;
 
-        // --- New Trade & Sell Functions ---
+        // --- Nuevas funciones de Intercambio y Venta ---
 
         function sellPlayer(teamName) {
             if (teamName !== selectedTeamName) return;
@@ -979,7 +710,6 @@
             renderRosters();
             showMessage(`¡Venta exitosa! ${player.name} ha sido vendido al banco por ${formatPrice(sellPrice)}.`);
         }
-        window.sellPlayer = sellPlayer;
 
         function startTrade(teamName) {
             if (teamName !== selectedTeamName) return;
@@ -1027,12 +757,10 @@
             tradeCashInput.value = '';
             tradeModal.classList.remove('hidden');
         }
-        window.startTrade = startTrade;
 
         function closeModal() {
             tradeModal.classList.add('hidden');
         }
-        window.closeModal = closeModal;
 
         function executeTrade() {
             const targetTeamName = targetTeamSelect.value;
@@ -1074,11 +802,51 @@
             closeModal();
             showMessage(`¡Intercambio exitoso! ${playerToTrade.name} ahora está en el equipo ${targetTeam.name} a cambio de ${targetPlayer.name} y ${formatPrice(cash)}.`);
         }
-        window.executeTrade = executeTrade;
         
-        window.onload = initApp;
+        // --- Funciones para finalizar el draft ---
 
+        function showEndDraftModal() {
+            endDraftModal.classList.remove('hidden');
+            endDraftCodeInput.value = '';
+        }
+        
+        function closeEndDraftModal() {
+            endDraftModal.classList.add('hidden');
+        }
+
+        function confirmEndDraft() {
+            const code = endDraftCodeInput.value.trim();
+            if (code === '0590') {
+                closeEndDraftModal();
+                endDraftSession();
+            } else {
+                showMessage('Código incorrecto. Por favor, inténtalo de nuevo.');
+                endDraftCodeInput.value = '';
+            }
+        }
+        
+        function endDraftSession() {
+            // Reiniciar el estado del juego
+            clearInterval(countdownTimer);
+            allPlayers = [...players.goalkeepers, ...players.defenders, ...players.midfielders, ...players.forwards];
+            teams = [];
+            selectedTeamName = null;
+            currentAuctionPlayer = null;
+            highestBid = 0;
+            highestBidder = null;
+            playersDraftedCount = 0;
+
+            // Ocultar la pantalla de juego y mostrar la de selección de equipo
+            gameScreen.classList.add('hidden');
+            teamSelectionScreen.classList.remove('hidden');
+            
+            renderTeamList();
+            showMessage('El draft ha finalizado. Puedes empezar una nueva sesión.');
+        }
+
+        window.onload = function() {
+            // No hay nada que hacer en la carga para la V5, ya que no hay Firebase
+        };
     </script>
 </body>
 </html>
-
