@@ -1,0 +1,1084 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Draft de Subasta FC 24</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;700&display=swap" rel="stylesheet">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #1a202c;
+            color: #e2e8f0;
+        }
+        .container {
+            max-width: 1400px;
+        }
+        .player-card {
+            background-color: #2d3748;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            transition: transform 0.3s ease-in-out, box-shadow 0.3s ease-in-out;
+        }
+        .player-card:hover {
+            transform: scale(1.03);
+            box-shadow: 0 10px 15px rgba(0, 0, 0, 0.2);
+        }
+        .team-roster {
+            min-height: 200px;
+        }
+        .bid-button {
+            transition: all 0.2s ease-in-out;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        }
+        .bid-button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 10px rgba(0, 0, 0, 0.2);
+        }
+        .hidden-name {
+            filter: blur(4px);
+            transition: filter 0.5s ease-in-out;
+        }
+        .revealed-name {
+            filter: blur(0);
+        }
+        .player-image-container {
+            width: 150px;
+            height: 150px;
+            margin: 0 auto 1rem;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            background-color: #4a5568;
+            border-radius: 50%;
+            overflow: hidden;
+        }
+        .player-silhouette {
+            width: 100%;
+            height: 100%;
+            filter: grayscale(100%) blur(5px);
+            transition: filter 0.5s ease-in-out;
+        }
+        .player-list::-webkit-scrollbar {
+            width: 8px;
+        }
+        .player-list::-webkit-scrollbar-track {
+            background: #2d3748;
+            border-radius: 10px;
+        }
+        .player-list::-webkit-scrollbar-thumb {
+            background-color: #4a5568;
+            border-radius: 10px;
+            border: 2px solid #2d3748;
+        }
+        .flag-icon {
+            width: 24px;
+            height: 24px;
+            border-radius: 50%;
+            box-shadow: 0 0 5px rgba(0, 0, 0, 0.2);
+        }
+        .team-card.selected {
+            border: 3px solid #6ee7b7;
+            transform: scale(1.05);
+            box-shadow: 0 0 20px rgba(110, 231, 183, 0.5);
+        }
+        .team-roster.selected {
+            border: 3px solid #6ee7b7;
+            box-shadow: 0 0 15px rgba(110, 231, 183, 0.5);
+        }
+        .team-name-card {
+            @apply flex justify-between items-center p-4 bg-gray-700 rounded-xl shadow-md mb-2;
+            border: 2px solid transparent;
+            transition: border-color 0.2s, transform 0.2s;
+        }
+        .team-name-card:hover {
+            transform: translateY(-2px);
+        }
+        .team-name-card.selected {
+            @apply border-2;
+        }
+        .trade-market {
+            transition: all 0.5s ease-in-out;
+            transform: translateY(20px);
+            opacity: 0;
+            pointer-events: none;
+        }
+        .trade-market.active {
+            transform: translateY(0);
+            opacity: 1;
+            pointer-events: all;
+        }
+        .message-box {
+            animation: fadeIn 0.5s ease-in-out;
+            z-index: 100;
+        }
+        @keyframes fadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+    </style>
+</head>
+<body class="p-4 sm:p-8">
+
+    <!-- Message Box UI -->
+    <div id="messageBox" class="fixed inset-0 bg-black bg-opacity-80 hidden flex items-center justify-center p-4">
+        <div class="bg-gray-800 rounded-2xl p-8 max-w-sm w-full text-center shadow-2xl message-box">
+            <p id="messageText" class="text-white text-lg font-bold mb-6"></p>
+            <button id="messageOkButton" class="px-6 py-3 bg-blue-600 text-white rounded-full font-bold bid-button hover:bg-blue-700 w-full">OK</button>
+        </div>
+    </div>
+
+    <!-- Team Creation & Selection Screen -->
+    <div id="team-selection-screen" class="min-h-screen flex flex-col items-center justify-center p-4 text-center">
+        <h1 class="text-4xl sm:text-5xl font-bold mb-6 text-teal-400">Configuración del Draft</h1>
+        <p class="text-gray-400 text-lg mb-8">Crea entre 2 y 10 equipos y luego selecciona el tuyo para comenzar.</p>
+        
+        <div class="bg-gray-800 rounded-3xl p-6 sm:p-10 shadow-2xl w-full max-w-xl">
+            <div class="flex items-center justify-between mb-4 bg-gray-700 p-4 rounded-xl">
+                <span class="text-lg font-semibold text-white">Participantes en línea: <span id="online-count" class="text-green-400">0</span></span>
+                <span id="user-id" class="text-xs text-gray-400 break-all"></span>
+            </div>
+            
+            <h2 class="text-2xl font-bold mb-4 text-blue-400">Crear Equipos</h2>
+            <div class="flex flex-col space-y-4 mb-6">
+                <div class="flex flex-col sm:flex-row space-y-4 sm:space-y-0 sm:space-x-4">
+                    <input type="password" id="adminCodeInput" placeholder="Código de administrador..." class="flex-grow p-3 rounded-xl bg-gray-700 text-white border border-gray-600 focus:outline-none focus:ring-2 focus:ring-yellow-500">
+                    <button onclick="validateAdminCode()" class="px-6 py-3 bg-yellow-600 text-white rounded-full font-bold bid-button hover:bg-yellow-700">Validar Código</button>
+                </div>
+                <div id="adminMessage" class="text-green-400 text-center font-semibold hidden">¡Acceso de administrador concedido!</div>
+            </div>
+
+            <div class="flex flex-col sm:flex-row space-y-4 sm:space-y-0 sm:space-x-4 mb-6">
+                <input type="text" id="newTeamNameInput" placeholder="Nombre del equipo..." class="flex-grow p-3 rounded-xl bg-gray-700 text-white border border-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-500" disabled>
+                <button onclick="addTeam()" id="addTeamButton" class="px-6 py-3 bg-green-600 text-white rounded-full font-bold bid-button hover:bg-green-700" disabled>Agregar Equipo</button>
+            </div>
+            
+            <div id="teamListContainer" class="max-h-60 overflow-y-auto mb-6">
+                <!-- Team cards will be generated here -->
+            </div>
+            
+            <button id="startGameButton" onclick="startGame()" class="w-full px-6 py-3 bg-teal-600 text-white rounded-full font-bold bid-button hover:bg-teal-700" disabled>
+                Comenzar Draft
+            </button>
+        </div>
+    </div>
+
+    <!-- Main Game Screen -->
+    <div id="game-screen" class="container mx-auto hidden">
+        <header class="text-center mb-10">
+            <h1 class="text-3xl sm:text-5xl font-bold mb-2 bg-clip-text text-transparent bg-gradient-to-r from-teal-400 to-blue-600">
+                Draft de Subasta FC 24
+            </h1>
+            <p class="text-gray-400 text-lg">Puja por los mejores jugadores y construye tu equipo.</p>
+        </header>
+
+        <!-- Current Auction Section -->
+        <div class="bg-gray-800 rounded-3xl p-6 sm:p-10 mb-12 shadow-2xl">
+            <h2 class="text-3xl font-bold mb-6 text-center text-teal-300">Subasta Actual</h2>
+            <div id="auctionInfo" class="text-center">
+                <div class="p-4 bg-gray-700 rounded-xl inline-block player-card mx-auto transition-all duration-300 transform-gpu" id="current-player-card">
+                    <div id="playerImageContainer" class="player-image-container">
+                        <img id="playerImage" class="player-silhouette" src="https://placehold.co/150x150/000000/FFFFFF?text=?" alt="Jugador misterioso">
+                    </div>
+                    <div class="flex items-center justify-center space-x-2">
+                        <img id="flagImage" class="flag-icon hidden" src="" alt="Bandera del país">
+                        <p id="currentPlayerName" class="text-xl font-bold hidden-name">Nombre Oculto</p>
+                    </div>
+                    <p id="currentPlayerPosition" class="text-lg font-semibold text-gray-300">Posición: ---</p>
+                    <p id="currentPrice" class="text-2xl font-bold text-yellow-300 my-2">Precio: --</p>
+                    <p id="currentBidder" class="text-md text-gray-400">Última oferta: --</p>
+                    <p class="mt-4 text-red-400 font-semibold text-xl">Tiempo restante: <span id="countdown">30</span>s</p>
+                </div>
+            </div>
+            
+            <div class="flex flex-col sm:flex-row justify-center items-center mt-6 space-y-4 sm:space-y-0 sm:space-x-4">
+                <button onclick="startNewAuction()" id="nextPlayerButton" class="w-full sm:w-auto px-6 py-3 bg-teal-600 text-white rounded-full font-bold bid-button hover:bg-teal-700" disabled>Siguiente Jugador</button>
+                <button onclick="revealAndEndAuction()" id="revealButton" class="w-full sm:w-auto px-6 py-3 bg-blue-600 text-white rounded-full font-bold bid-button hover:bg-blue-700" disabled>Revelar Jugador</button>
+            </div>
+        </div>
+
+        <!-- Bidding Controls Section (Single for selected team) -->
+        <div class="bg-gray-800 rounded-3xl p-6 sm:p-10 mb-12 shadow-2xl flex flex-col items-center">
+            <h2 class="text-3xl font-bold mb-4 text-teal-300">Puja de <span id="myTeamName" class="text-blue-400"></span></h2>
+            <p id="myTeamBudget" class="text-gray-400 mb-6">Presupuesto: --</p>
+            <div class="flex flex-col w-full max-w-sm space-y-2">
+                <button onclick="bidCurrentPrice()" class="w-full px-6 py-3 bg-gray-600 text-white rounded-full font-bold bid-button hover:bg-gray-700">Ofertar precio actual</button>
+                <button onclick="bidPlus2M()" class="w-full px-6 py-3 bg-gray-600 text-white rounded-full font-bold bid-button hover:bg-gray-700">Ofertar +$2M</button>
+                <input type="number" id="myBidInput" placeholder="Tu Oferta..." class="w-full p-2 rounded-lg bg-gray-700 text-white text-center border border-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-500">
+                <button onclick="placeBid()" class="w-full px-6 py-3 bg-blue-600 text-white rounded-full font-bold bid-button hover:bg-blue-700">Ofertar</button>
+            </div>
+        </div>
+        
+        <!-- Roster Section -->
+        <h2 class="text-3xl font-bold text-center mb-8 text-white">Jugadores Seleccionados</h2>
+        <div id="rosterContainer" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+            <!-- Rosters will be generated here dynamically -->
+        </div>
+
+        <!-- Trade/Sell Section -->
+        <div id="tradeMarket" class="trade-market bg-gray-800 rounded-3xl p-6 sm:p-10 mt-12 shadow-2xl">
+            <h2 class="text-3xl font-bold mb-6 text-center text-yellow-300">Mercado de Fichajes</h2>
+            <div id="tradeControlsContainer" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+                <!-- Trade controls will be generated here dynamically -->
+            </div>
+
+            <!-- Trade Modal UI -->
+            <div id="tradeModal" class="hidden fixed inset-0 bg-black bg-opacity-80 flex items-center justify-center p-4">
+                <div class="bg-gray-900 rounded-xl p-8 max-w-lg w-full">
+                    <h3 class="text-2xl font-bold mb-4 text-center text-yellow-300">Proponer Intercambio</h3>
+                    <div id="tradeDetails" class="text-center text-lg mb-4"></div>
+                    <div class="flex flex-col space-y-4">
+                        <label for="targetTeamSelect" class="text-gray-300">Equipo al que ofreces el intercambio:</label>
+                        <select id="targetTeamSelect" class="w-full p-2 rounded-lg bg-gray-700 text-white focus:outline-none focus:ring-2 focus:ring-yellow-500"></select>
+                        <label for="targetPlayerSelect" class="text-gray-300">Jugador que quieres de vuelta:</label>
+                        <select id="targetPlayerSelect" class="w-full p-2 rounded-lg bg-gray-700 text-white focus:outline-none focus:ring-2 focus:ring-yellow-500"></select>
+                        <label for="tradeCash" class="text-gray-300">Dinero adicional que ofreces (opcional):</label>
+                        <input type="number" id="tradeCash" placeholder="Monto en dinero..." class="w-full p-2 rounded-lg bg-gray-700 text-white text-center focus:outline-none focus:ring-2 focus:ring-yellow-500">
+                    </div>
+                    <div class="flex justify-between mt-6 space-x-4">
+                        <button onclick="executeTrade()" class="w-1/2 px-6 py-3 bg-green-600 text-white rounded-full font-bold bid-button hover:bg-green-700">Confirmar</button>
+                        <button onclick="closeModal()" class="w-1/2 px-6 py-3 bg-red-600 text-white rounded-full font-bold bid-button hover:bg-red-700">Cancelar</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Firebase CDN imports -->
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, doc, getDoc, setDoc, onSnapshot, collection, getDocs, runTransaction, updateDoc, setLogLevel } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+        
+        setLogLevel('debug');
+
+        // Global variables provided by the Canvas environment
+        const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+        const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : {};
+        const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
+
+        const app = initializeApp(firebaseConfig);
+        const db = getFirestore(app);
+        const auth = getAuth(app);
+        
+        // --- Game State Variables ---
+        const players = {
+            goalkeepers: [
+                { name: 'Thibaut Courtois', pos: 'POR', price: 90000000, value: 90000000, country: 'Bélgica', countryCode: 'BE', img: 'https://cdn.futbin.com/content/fifa24/players/192119.png' },
+                { name: 'Alisson', pos: 'POR', price: 89000000, value: 89000000, country: 'Brasil', countryCode: 'BR', img: 'https://cdn.futbin.com/content/fifa24/players/212831.png' },
+                { name: 'Ederson', pos: 'POR', price: 88000000, value: 88000000, country: 'Brasil', countryCode: 'BR', img: 'https://cdn.futbin.com/content/fifa24/players/212844.png' },
+                { name: 'Jan Oblak', pos: 'POR', price: 87000000, value: 87000000, country: 'Eslovenia', countryCode: 'SI', img: 'https://cdn.futbin.com/content/fifa24/players/200724.png' },
+                { name: 'Marc-André ter Stegen', pos: 'POR', price: 86000000, value: 86000000, country: 'Alemania', countryCode: 'DE', img: 'https://cdn.futbin.com/content/fifa24/players/192448.png' },
+                { name: 'Mike Maignan', pos: 'POR', price: 85000000, value: 85000000, country: 'Francia', countryCode: 'FR', img: 'https://cdn.futbin.com/content/fifa24/players/223727.png' },
+                { name: 'Gianluigi Donnarumma', pos: 'POR', price: 84000000, value: 84000000, country: 'Italia', countryCode: 'IT', img: 'https://cdn.futbin.com/content/fifa24/players/230623.png' },
+                { name: 'Manuel Neuer', pos: 'POR', price: 83000000, value: 83000000, country: 'Alemania', countryCode: 'DE', img: 'https://cdn.futbin.com/content/fifa24/players/167948.png' },
+                { name: 'Keylor Navas', pos: 'POR', price: 82000000, value: 82000000, country: 'Costa Rica', countryCode: 'CR', img: 'https://cdn.futbin.com/content/fifa24/players/200928.png' },
+                { name: 'Wojciech Szczęsny', pos: 'POR', price: 81000000, value: 81000000, country: 'Polonia', countryCode: 'PL', img: 'https://cdn.futbin.com/content/fifa24/players/180297.png' },
+                { name: 'Hugo Lloris', pos: 'POR', price: 80000000, value: 80000000, country: 'Francia', countryCode: 'FR', img: 'https://cdn.futbin.com/content/fifa24/players/178550.png' },
+                { name: 'David de Gea', pos: 'POR', price: 79000000, value: 79000000, country: 'España', countryCode: 'ES', img: 'https://cdn.futbin.com/content/fifa24/players/193041.png' },
+                { name: 'Yassine Bounou (Bono)', pos: 'POR', price: 78000000, value: 78000000, country: 'Marruecos', countryCode: 'MA', img: 'https://cdn.futbin.com/content/fifa24/players/211910.png' },
+                { name: 'Édouard Mendy', pos: 'POR', price: 77000000, value: 77000000, country: 'Senegal', countryCode: 'SN', img: 'https://cdn.futbin.com/content/fifa24/players/244304.png' },
+                { name: 'Diogo Costa', pos: 'POR', price: 76000000, value: 76000000, country: 'Portugal', countryCode: 'PT', img: 'https://cdn.futbin.com/content/fifa24/players/239031.png' },
+                { name: 'Onana', pos: 'POR', price: 75000000, value: 75000000, country: 'Camerún', countryCode: 'CM', img: 'https://cdn.futbin.com/content/fifa24/players/226065.png' },
+                { name: 'Nick Pope', pos: 'POR', price: 74000000, value: 74000000, country: 'Inglaterra', countryCode: 'GB', img: 'https://cdn.futbin.com/content/fifa24/players/212190.png' },
+                { name: 'Koen Casteels', pos: 'POR', price: 73000000, value: 73000000, country: 'Bélgica', countryCode: 'BE', img: 'https://cdn.futbin.com/content/fifa24/players/199042.png' },
+                { name: 'Gregor Kobel', pos: 'POR', price: 72000000, value: 72000000, country: 'Suiza', countryCode: 'CH', img: 'https://cdn.futbin.com/content/fifa24/players/236168.png' },
+                { name: 'Kepa Arrizabalaga', pos: 'POR', price: 71000000, value: 71000000, country: 'España', countryCode: 'ES', img: 'https://cdn.futbin.com/content/fifa24/players/213038.png' }
+            ],
+            defenders: [
+                { name: 'Virgil van Dijk', pos: 'DF', price: 90000000, value: 90000000, country: 'Países Bajos', countryCode: 'NL', img: 'https://cdn.futbin.com/content/fifa24/players/237955.png' },
+                { name: 'Rúben Dias', pos: 'DF', price: 85000000, value: 85000000, country: 'Portugal', countryCode: 'PT', img: 'https://cdn.futbin.com/content/fifa24/players/230630.png' },
+                { name: 'Ronald Araujo', pos: 'DF', price: 80000000, value: 80000000, country: 'Uruguay', countryCode: 'UY', img: 'https://cdn.futbin.com/content/fifa24/players/244464.png' },
+                { name: 'Matthijs de Ligt', pos: 'DF', price: 78000000, value: 78000000, country: 'Países Bajos', countryCode: 'NL', img: 'https://cdn.futbin.com/content/fifa24/players/235805.png' },
+                { name: 'Éder Militão', pos: 'DF', price: 77000000, value: 77000000, country: 'Brasil', countryCode: 'BR', img: 'https://cdn.futbin.com/content/fifa24/players/232491.png' },
+                { name: 'Marquinhos', pos: 'DF', price: 75000000, value: 75000000, country: 'Brasil', countryCode: 'BR', img: 'https://cdn.futbin.com/content/fifa24/players/207865.png' },
+                { name: 'João Cancelo', pos: 'DF', price: 74000000, value: 74000000, country: 'Portugal', countryCode: 'PT', img: 'https://cdn.futbin.com/content/fifa24/players/212622.png' },
+                { name: 'Andrew Robertson', pos: 'DF', price: 72000000, value: 72000000, country: 'Escocia', countryCode: 'GB', img: 'https://cdn.futbin.com/content/fifa24/players/220815.png' },
+                { name: 'Kyle Walker', pos: 'DF', price: 70000000, value: 70000000, country: 'Inglaterra', countryCode: 'GB', img: 'https://cdn.futbin.com/content/fifa24/players/199540.png' },
+                { name: 'Theo Hernández', pos: 'DF', price: 68000000, value: 68000000, country: 'Francia', countryCode: 'FR', img: 'https://cdn.futbin.com/content/fifa24/players/231284.png' },
+                { name: 'Trent Alexander-Arnold', pos: 'DF', price: 67000000, value: 67000000, country: 'Inglaterra', countryCode: 'GB', img: 'https://cdn.futbin.com/content/fifa24/players/231281.png' },
+                { name: 'John Stones', pos: 'DF', price: 65000000, value: 65000000, country: 'Inglaterra', countryCode: 'GB', img: 'https://cdn.futbin.com/content/fifa24/players/214995.png' },
+                { name: 'David Alaba', pos: 'DF', price: 63000000, value: 63000000, country: 'Austria', countryCode: 'AT', img: 'https://cdn.futbin.com/content/fifa24/players/193080.png' },
+                { name: 'Fikayo Tomori', pos: 'DF', price: 57000000, value: 57000000, country: 'Inglaterra', countryCode: 'GB', img: 'https://cdn.futbin.com/content/fifa24/players/239088.png' },
+                { name: 'Alessandro Bastoni', pos: 'DF', price: 55000000, value: 55000000, country: 'Italia', countryCode: 'IT', img: 'https://cdn.futbin.com/content/fifa24/players/240562.png' },
+                { name: 'Antonio Rüdiger', pos: 'DF', price: 54000000, value: 54000000, country: 'Alemania', countryCode: 'DE', img: 'https://cdn.futbin.com/content/fifa24/players/212624.png' },
+                { name: 'Jules Koundé', pos: 'DF', price: 53000000, value: 53000000, country: 'Francia', countryCode: 'FR', img: 'https://cdn.futbin.com/content/fifa24/players/240571.png' }
+            ],
+            midfielders: [
+                { name: 'Kevin De Bruyne', pos: 'MC', price: 100000000, value: 100000000, country: 'Bélgica', countryCode: 'BE', img: 'https://cdn.futbin.com/content/fifa24/players/192985.png' },
+                { name: 'Bernardo Silva', pos: 'MC', price: 92000000, value: 92000000, country: 'Portugal', countryCode: 'PT', img: 'https://cdn.futbin.com/content/fifa24/players/218667.png' },
+                { name: 'Federico Valverde', pos: 'MC', price: 90000000, value: 90000000, country: 'Uruguay', countryCode: 'UY', img: 'https://cdn.futbin.com/content/fifa24/players/232495.png' },
+                { name: 'Bruno Fernandes', pos: 'MC', price: 88000000, value: 88000000, country: 'Portugal', countryCode: 'PT', img: 'https://cdn.futbin.com/content/fifa24/players/212610.png' },
+                { name: 'Joshua Kimmich', pos: 'MC', price: 87000000, value: 87000000, country: 'Alemania', countryCode: 'DE', img: 'https://cdn.futbin.com/content/fifa24/players/212622.png' },
+                { name: 'Frenkie de Jong', pos: 'MC', price: 85000000, value: 85000000, country: 'Países Bajos', countryCode: 'NL', img: 'https://cdn.futbin.com/content/fifa24/players/237942.png' },
+                { name: 'Jamal Musiala', pos: 'MC', price: 84000000, value: 84000000, country: 'Alemania', countryCode: 'DE', img: 'https://cdn.futbin.com/content/fifa24/players/251854.png' },
+                { name: 'Luka Modrić', pos: 'MC', price: 83000000, value: 83000000, country: 'Croacia', countryCode: 'HR', img: 'https://cdn.futbin.com/content/fifa24/players/177003.png' },
+                { name: 'Martin Ødegaard', pos: 'MC', price: 82000000, value: 82000000, country: 'Noruega', countryCode: 'NO', img: 'https://cdn.futbin.com/content/fifa24/players/229048.png' },
+                { name: 'Rodri', pos: 'MC', price: 81000000, value: 81000000, country: 'España', countryCode: 'ES', img: 'https://cdn.futbin.com/content/fifa24/players/231866.png' },
+                { name: 'Pedri', pos: 'MC', price: 80000000, value: 80000000, country: 'España', countryCode: 'ES', img: 'https://cdn.futbin.com/content/fifa24/players/251347.png' },
+                { name: 'Jude Bellingham', pos: 'MC', price: 79000000, value: 79000000, country: 'Inglaterra', countryCode: 'GB', img: 'https://cdn.futbin.com/content/fifa24/players/246237.png' },
+                { name: 'Gavi', pos: 'MC', price: 78000000, value: 78000000, country: 'España', countryCode: 'ES', img: 'https://cdn.futbin.com/content/fifa24/players/256801.png' },
+                { name: 'Sergej Milinković-Savić', pos: 'MC', price: 76000000, value: 76000000, country: 'Serbia', countryCode: 'RS', img: 'https://cdn.futbin.com/content/fifa24/players/214341.png' },
+                { name: 'Declan Rice', pos: 'MC', price: 75000000, value: 75000000, country: 'Inglaterra', countryCode: 'GB', img: 'https://cdn.futbin.com/content/fifa24/players/237692.png' },
+                { name: 'Enzo Fernández', pos: 'MC', price: 73000000, value: 73000000, country: 'Argentina', countryCode: 'AR', img: 'https://cdn.futbin.com/content/fifa24/players/250284.png' },
+                { name: 'Aurélien Tchouaméni', pos: 'MC', price: 72000000, value: 72000000, country: 'Francia', countryCode: 'FR', img: 'https://cdn.futbin.com/content/fifa24/players/244301.png' },
+                { name: 'Gabri Veiga', pos: 'MC', price: 70000000, value: 70000000, country: 'España', countryCode: 'ES', img: 'https://cdn.futbin.com/content/fifa24/players/260021.png' }
+            ],
+            forwards: [
+                { name: 'Kylian Mbappé', pos: 'DC', price: 150000000, value: 150000000, country: 'Francia', countryCode: 'FR', img: 'https://cdn.futbin.com/content/fifa24/players/231770.png' },
+                { name: 'Erling Haaland', pos: 'DC', price: 145000000, value: 145000000, country: 'Noruega', countryCode: 'NO', img: 'https://cdn.futbin.com/content/fifa24/players/250239.png' },
+                { name: 'Harry Kane', pos: 'DC', price: 135000000, value: 135000000, country: 'Inglaterra', countryCode: 'GB', img: 'https://cdn.futbin.com/content/fifa24/players/202126.png' },
+                { name: 'Robert Lewandowski', pos: 'DC', price: 130000000, value: 130000000, country: 'Polonia', countryCode: 'PL', img: 'https://cdn.futbin.com/content/fifa24/players/188545.png' },
+                { name: 'Mohamed Salah', pos: 'DC', price: 125000000, value: 125000000, country: 'Egipto', countryCode: 'EG', img: 'https://cdn.futbin.com/content/fifa24/players/209331.png' },
+                { name: 'Vinicius Jr.', pos: 'DC', price: 120000000, value: 120000000, country: 'Brasil', countryCode: 'BR', img: 'https://cdn.futbin.com/content/fifa24/players/238794.png' },
+                { name: 'Antoine Griezmann', pos: 'DC', price: 118000000, value: 118000000, country: 'Francia', countryCode: 'FR', img: 'https://cdn.futbin.com/content/fifa24/players/194765.png' },
+                { name: 'Victor Osimhen', pos: 'DC', price: 115000000, value: 115000000, country: 'Nigeria', countryCode: 'NG', img: 'https://cdn.futbin.com/content/fifa24/players/245367.png' },
+                { name: 'Lautaro Martínez', pos: 'DC', price: 110000000, value: 110000000, country: 'Argentina', countryCode: 'AR', img: 'https://cdn.futbin.com/content/fifa24/players/231260.png' },
+                { name: 'Cristiano Ronaldo', pos: 'DC', price: 105000000, value: 105000000, country: 'Portugal', countryCode: 'PT', img: 'https://cdn.futbin.com/content/fifa24/players/20801.png' },
+                { name: 'Neymar Jr.', pos: 'DC', price: 102000000, value: 102000000, country: 'Brasil', countryCode: 'BR', img: 'https://cdn.futbin.com/content/fifa24/players/190871.png' },
+                { name: 'Heung Min Son', pos: 'DC', price: 100000000, value: 100000000, country: 'Corea del Sur', countryCode: 'KR', img: 'https://cdn.futbin.com/content/fifa24/players/200145.png' },
+                { name: 'Gabriel Jesus', pos: 'DC', price: 98000000, value: 98000000, country: 'Brasil', countryCode: 'BR', img: 'https://cdn.futbin.com/content/fifa24/players/230666.png' },
+                { name: 'Darwin Núñez', pos: 'DC', price: 95000000, value: 95000000, country: 'Uruguay', countryCode: 'UY', img: 'https://cdn.futbin.com/content/fifa24/players/248545.png' },
+                { name: 'Diogo Jota', pos: 'DC', price: 93000000, value: 93000000, country: 'Portugal', countryCode: 'PT', img: 'https://cdn.futbin.com/content/fifa24/players/231109.png' },
+                { name: 'Memphis Depay', pos: 'DC', price: 90000000, value: 90000000, country: 'Países Bajos', countryCode: 'NL', img: 'https://cdn.futbin.com/content/fifa24/players/208830.png' },
+                { name: 'Randal Kolo Muani', pos: 'DC', price: 88000000, value: 88000000, country: 'Francia', countryCode: 'FR', img: 'https://cdn.futbin.com/content/fifa24/players/249156.png' },
+                { name: 'Rafael Leão', pos: 'DC', price: 85000000, value: 85000000, country: 'Portugal', countryCode: 'PT', img: 'https://cdn.futbin.com/content/fifa24/players/244302.png' },
+                { name: 'Rasmus Højlund', pos: 'DC', price: 82000000, value: 82000000, country: 'Dinamarca', countryCode: 'DK', img: 'https://cdn.futbin.com/content/fifa24/players/257321.png' }
+            ]
+        };
+
+        let allPlayers = [...players.goalkeepers, ...players.defenders, ...players.midfielders, ...players.forwards];
+        let currentAuctionPlayer = null;
+        let highestBid = 0;
+        let highestBidder = null;
+        let playersDraftedCount = 0;
+        
+        let teams = [];
+        let selectedTeamName = '';
+        let isAdmin = false;
+
+        const newTeamNameInput = document.getElementById('newTeamNameInput');
+        const addTeamButton = document.getElementById('addTeamButton');
+        const teamListContainer = document.getElementById('teamListContainer');
+        const startGameButton = document.getElementById('startGameButton');
+        const teamSelectionScreen = document.getElementById('team-selection-screen');
+        const gameScreen = document.getElementById('game-screen');
+        const rosterContainer = document.getElementById('rosterContainer');
+        const tradeControlsContainer = document.getElementById('tradeControlsContainer');
+        const adminCodeInput = document.getElementById('adminCodeInput');
+        const adminMessage = document.getElementById('adminMessage');
+        const tradeMarket = document.getElementById('tradeMarket');
+        const onlineCountEl = document.getElementById('online-count');
+        const userIdEl = document.getElementById('user-id');
+
+        const auctionInfo = document.getElementById('auctionInfo');
+        const playerImageElem = document.getElementById('playerImage');
+        const flagImageElem = document.getElementById('flagImage');
+        const currentPlayerNameElem = document.getElementById('currentPlayerName');
+        const currentPlayerPositionElem = document.getElementById('currentPlayerPosition');
+        const currentPriceElem = document.getElementById('currentPrice');
+        const currentBidderElem = document.getElementById('currentBidder');
+        const nextPlayerButton = document.getElementById('nextPlayerButton');
+        const revealButton = document.getElementById('revealButton');
+        const countdownElem = document.getElementById('countdown');
+        const tradeModal = document.getElementById('tradeModal');
+        const tradeDetailsElem = document.getElementById('tradeDetails');
+        const targetTeamSelect = document.getElementById('targetTeamSelect');
+        const targetPlayerSelect = document.getElementById('targetPlayerSelect');
+        const tradeCashInput = document.getElementById('tradeCash');
+        const myTeamNameElem = document.getElementById('myTeamName');
+        const myTeamBudgetElem = document.getElementById('myTeamBudget');
+        const myBidInput = document.getElementById('myBidInput');
+
+        const messageBox = document.getElementById('messageBox');
+        const messageText = document.getElementById('messageText');
+        const messageOkButton = document.getElementById('messageOkButton');
+        
+        let countdownTimer;
+        let playerToTrade = null;
+        let playerToTradeTeamName = null;
+        
+        let userId = null;
+        let isAuthReady = false;
+        const assignedColors = [
+            '#ef4444', '#f97316', '#f59e0b', '#eab308', '#84cc16', '#22c55e', '#10b981', '#06b6d4',
+            '#0ea5e9', '#3b82f6', '#6366f1', '#8b5cf6', '#a855f7', '#d946ef', '#ec4899', '#f43f5e'
+        ];
+
+        // --- Core Functions ---
+        
+        function showMessage(text) {
+            messageText.textContent = text;
+            messageBox.classList.remove('hidden');
+        }
+        window.showMessage = showMessage;
+
+        function hideMessage() {
+            messageBox.classList.add('hidden');
+        }
+        window.hideMessage = hideMessage;
+
+        messageOkButton.addEventListener('click', hideMessage);
+        
+        function formatPrice(price) {
+            return new Intl.NumberFormat('es-ES', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }).format(price);
+        }
+        window.formatPrice = formatPrice;
+
+        function getTeamByName(name) {
+            return teams.find(t => t.name === name);
+        }
+        window.getTeamByName = getTeamByName;
+
+        // --- Firebase Integration ---
+        const initApp = async () => {
+            try {
+                if (initialAuthToken) {
+                    await signInWithCustomToken(auth, initialAuthToken);
+                } else {
+                    await signInAnonymously(auth);
+                }
+
+                onAuthStateChanged(auth, async (user) => {
+                    if (user) {
+                        userId = user.uid;
+                        isAuthReady = true;
+                        userIdEl.textContent = `Tu ID: ${userId}`;
+                        
+                        const userPresenceRef = doc(db, 'artifacts', appId, 'public', 'data', 'presence', userId);
+                        await setDoc(userPresenceRef, { online: true, lastSeen: new Date(), selectedTeam: null }, { merge: true });
+
+                        setupListeners();
+                    } else {
+                        console.log('No user is signed in.');
+                    }
+                });
+
+            } catch (error) {
+                console.error('Error durante la inicialización de Firebase:', error);
+                showMessage('Error al conectar con la base de datos. Intenta recargar la página.');
+            }
+        };
+
+        const setupListeners = () => {
+            if (!isAuthReady) {
+                return;
+            }
+
+            // Listen for all users' presence
+            const presenceRef = collection(db, 'artifacts', appId, 'public', 'data', 'presence');
+            onSnapshot(presenceRef, (snapshot) => {
+                const onlineUsers = [];
+                const selectedTeamsData = {};
+                
+                snapshot.docs.forEach(doc => {
+                    const data = doc.data();
+                    if (data.online) {
+                        onlineUsers.push(doc.id);
+                    }
+                    if (data.selectedTeam) {
+                        selectedTeamsData[data.selectedTeam] = {
+                            userId: doc.id,
+                            color: data.color || '#e2e8f0'
+                        };
+                    }
+                });
+                
+                onlineCountEl.textContent = onlineUsers.length;
+                renderTeamList(selectedTeamsData, onlineUsers.length);
+            });
+            
+            // Listen for teams list
+            const teamsRef = collection(db, 'artifacts', appId, 'public', 'data', 'teams');
+            onSnapshot(teamsRef, (snapshot) => {
+                teams = snapshot.docs.map(doc => doc.data());
+                renderTeamList();
+            });
+        };
+        window.setupListeners = setupListeners;
+
+        const updateFirebaseTeams = async () => {
+            if (!isAdmin) return;
+             const teamsRef = collection(db, 'artifacts', appId, 'public', 'data', 'teams');
+             try {
+                 // Use a transaction to update teams to prevent race conditions
+                 await runTransaction(db, async (transaction) => {
+                     // First, fetch all current team docs to clear them
+                     const currentTeamsSnapshot = await getDocs(teamsRef);
+                     currentTeamsSnapshot.docs.forEach(doc => {
+                         transaction.delete(doc.ref);
+                     });
+                     
+                     // Then, add the new teams
+                     teams.forEach((team, index) => {
+                         const newTeamRef = doc(teamsRef, `${index}`);
+                         transaction.set(newTeamRef, team);
+                     });
+                 });
+                 console.log("Teams updated in Firebase successfully.");
+             } catch (error) {
+                 console.error("Error updating teams in Firestore:", error);
+                 showMessage("Error al guardar los equipos. Inténtalo de nuevo.");
+             }
+        }
+        window.updateFirebaseTeams = updateFirebaseTeams;
+        
+        // --- Team Creation & Selection ---
+        function renderTeamList(selectedTeamsData = {}, onlineUsersCount = 0) {
+            teamListContainer.innerHTML = '';
+            let selectedCount = 0;
+            let myTeamIsSelected = false;
+
+            teams.forEach(team => {
+                const teamData = selectedTeamsData[team.name] || {};
+                const isSelected = !!teamData.userId;
+                const isMine = teamData.userId === userId;
+                
+                if (isSelected) {
+                    selectedCount++;
+                }
+
+                if (isMine) {
+                    myTeamIsSelected = true;
+                    selectedTeamName = team.name;
+                }
+                
+                const teamCard = document.createElement('div');
+                teamCard.className = `team-name-card ${isMine ? 'selected' : ''}`;
+                if(isSelected) {
+                    teamCard.style.borderColor = teamData.color;
+                }
+                
+                let selectButtonHTML = '';
+                if (!isSelected || isMine) {
+                    selectButtonHTML = `<button onclick="selectTeam('${team.name}')" class="px-3 py-1 bg-blue-500 hover:bg-blue-600 text-white text-sm rounded-full">
+                        ${isMine ? 'Seleccionado' : 'Seleccionar'}
+                    </button>`;
+                } else {
+                    selectButtonHTML = `<span class="px-3 py-1 bg-gray-500 text-white text-sm rounded-full">Tomado</span>`;
+                }
+
+                teamCard.innerHTML = `
+                    <span class="font-bold text-xl text-white">${team.name}</span>
+                    <div class="flex items-center space-x-2">
+                        ${selectButtonHTML}
+                        ${isAdmin ? `<button onclick="deleteTeam('${team.name}')" class="px-3 py-1 bg-red-500 hover:bg-red-600 text-white text-sm rounded-full">
+                            Eliminar
+                        </button>` : ''}
+                    </div>
+                `;
+                teamListContainer.appendChild(teamCard);
+            });
+
+            if (isAdmin) {
+                startGameButton.disabled = teams.length < 2 || selectedCount !== onlineUsersCount || onlineUsersCount === 0;
+            } else {
+                startGameButton.disabled = !myTeamIsSelected || teams.length === 0;
+            }
+
+            const newTeamNameInput = document.getElementById('newTeamNameInput');
+            const addTeamButton = document.getElementById('addTeamButton');
+            newTeamNameInput.disabled = !isAdmin;
+            addTeamButton.disabled = !isAdmin;
+        }
+        window.renderTeamList = renderTeamList;
+
+        function validateAdminCode() {
+            if (adminCodeInput.value === '0590') {
+                isAdmin = true;
+                adminMessage.classList.remove('hidden');
+                showMessage('¡Acceso de administrador concedido!');
+            } else {
+                showMessage('Código de administrador incorrecto.');
+                isAdmin = false;
+            }
+            renderTeamList();
+        }
+        window.validateAdminCode = validateAdminCode;
+
+        function addTeam() {
+            if (!isAdmin) return;
+            const teamName = newTeamNameInput.value.trim();
+            if (!teamName || getTeamByName(teamName) || teams.length >= 10) {
+                showMessage('Entrada inválida o ya existe un equipo con este nombre o el límite de 10 ha sido alcanzado.');
+                return;
+            }
+            teams.push({ name: teamName, budget: 1500000000, roster: [] });
+            newTeamNameInput.value = '';
+            updateFirebaseTeams();
+        }
+        window.addTeam = addTeam;
+
+        function deleteTeam(teamName) {
+            if (!isAdmin) return;
+            teams = teams.filter(t => t.name !== teamName);
+            updateFirebaseTeams();
+        }
+        window.deleteTeam = deleteTeam;
+
+        const selectTeam = async (teamName) => {
+            const userRef = doc(db, 'artifacts', appId, 'public', 'data', 'presence', userId);
+            try {
+                await runTransaction(db, async (transaction) => {
+                    const userSnap = await transaction.get(userRef);
+                    const userData = userSnap.data();
+
+                    const presenceQuery = await getDocs(collection(db, 'artifacts', appId, 'public', 'data', 'presence'));
+                    let isTeamTaken = false;
+                    presenceQuery.docs.forEach(d => {
+                        if (d.data().selectedTeam === teamName && d.id !== userId) {
+                            isTeamTaken = true;
+                        }
+                    });
+
+                    if (isTeamTaken) {
+                        showMessage(`El equipo ${teamName} ya ha sido seleccionado por otro usuario.`);
+                    } else {
+                        const userColor = assignedColors[Math.floor(Math.random() * assignedColors.length)];
+                        transaction.update(userRef, { selectedTeam: teamName, color: userColor });
+                        selectedTeamName = teamName;
+                        showMessage(`Has seleccionado a ${teamName}.`);
+                    }
+                });
+            } catch (error) {
+                console.error('Error al seleccionar equipo:', error);
+                showMessage('Error al seleccionar el equipo. Inténtalo de nuevo.');
+            }
+        };
+        window.selectTeam = selectTeam;
+
+        async function startGame() {
+            if (!isAdmin) return;
+            const onlineCount = parseInt(onlineCountEl.textContent);
+            const selectedCount = (await getDocs(collection(db, 'artifacts', appId, 'public', 'data', 'presence'))).docs.filter(d => d.data().selectedTeam).length;
+            
+            if (onlineCount === 0 || selectedCount !== onlineCount) {
+                 showMessage('Todos los usuarios deben seleccionar un equipo para comenzar.');
+                 return;
+            }
+
+            teamSelectionScreen.classList.add('hidden');
+            gameScreen.classList.remove('hidden');
+            
+            renderGameUI();
+            updateBudgets();
+            updateTradeControls();
+            startNewAuction();
+        }
+        window.startGame = startGame;
+
+        function renderGameUI() {
+            rosterContainer.innerHTML = '';
+            tradeControlsContainer.innerHTML = '';
+
+            myTeamNameElem.textContent = selectedTeamName;
+            
+            teams.forEach(team => {
+                const rosterCard = document.createElement('div');
+                rosterCard.id = `roster-${team.name.replace(/\s/g, '')}-card`;
+                rosterCard.className = `bg-gray-900 rounded-2xl p-6 shadow-inner-xl team-roster ${team.name === selectedTeamName ? 'selected' : ''}`;
+                rosterCard.innerHTML = `
+                    <h3 class="text-xl font-bold mb-4 text-center text-white">${team.name}</h3>
+                    <p class="text-sm font-semibold text-gray-400 text-center mb-2">Presupuesto: <span id="budget-${team.name.replace(/\s/g, '')}">${formatPrice(team.budget)}</span></p>
+                    <ul id="roster-${team.name.replace(/\s/g, '')}" class="roster-list player-list max-h-96 overflow-y-auto space-y-2"></ul>
+                `;
+                rosterContainer.appendChild(rosterCard);
+
+                const tradeControls = document.createElement('div');
+                tradeControls.id = `trade-${team.name.replace(/\s/g, '')}-controls`;
+                tradeControls.className = `bg-gray-700 rounded-xl p-4 flex flex-col space-y-3`;
+                tradeControls.innerHTML = `
+                    <h4 class="text-lg font-semibold text-white">${team.name}</h4>
+                    <select id="trade-player-${team.name.replace(/\s/g, '')}" class="w-full p-2 rounded-lg bg-gray-800 text-white focus:outline-none focus:ring-2 focus:ring-yellow-500"></select>
+                    <div class="flex space-x-2">
+                        <button onclick="sellPlayer('${team.name}')" class="w-1/2 px-4 py-2 bg-red-600 text-white rounded-full font-bold bid-button hover:bg-red-700">Vender</button>
+                        <button onclick="startTrade('${team.name}')" class="w-1/2 px-4 py-2 bg-yellow-600 text-white rounded-full font-bold bid-button hover:bg-yellow-700">Intercambiar</button>
+                    </div>
+                `;
+                tradeControlsContainer.appendChild(tradeControls);
+            });
+            renderRosters();
+        }
+        window.renderGameUI = renderGameUI;
+
+        function updateBudgets() {
+            teams.forEach(team => {
+                const budgetElem = document.getElementById(`budget-${team.name.replace(/\s/g, '')}`);
+                if (budgetElem) {
+                    budgetElem.textContent = formatPrice(team.budget);
+                }
+            });
+            if (selectedTeamName) {
+                myTeamBudgetElem.textContent = `Presupuesto: ${formatPrice(getTeamByName(selectedTeamName).budget)}`;
+            }
+        }
+        window.updateBudgets = updateBudgets;
+
+        function renderRosters() {
+            teams.forEach(team => {
+                const rosterList = document.getElementById(`roster-${team.name.replace(/\s/g, '')}`);
+                rosterList.innerHTML = '';
+                team.roster.forEach(player => {
+                    const li = document.createElement('li');
+                    li.className = 'font-medium text-gray-300 p-2 bg-gray-700 rounded-lg shadow-md flex justify-between items-center';
+                    li.innerHTML = `
+                        <div class="flex items-center space-x-2">
+                            <img src="https://flagsapi.com/${player.countryCode}/shiny/32.png" alt="${player.country}" class="flag-icon w-6 h-6">
+                            <span>${player.name} (${player.pos})</span>
+                        </div>
+                        <div class="flex flex-col items-end">
+                            <span class="text-sm font-bold text-yellow-300">Comprado: ${formatPrice(player.price)}</span>
+                        </div>
+                    `;
+                    rosterList.appendChild(li);
+                });
+                
+                const tradeSelect = document.getElementById(`trade-player-${team.name.replace(/\s/g, '')}`);
+                if (tradeSelect) {
+                    tradeSelect.innerHTML = '<option value="">Selecciona un jugador...</option>';
+                    team.roster.forEach((player, index) => {
+                        const option = document.createElement('option');
+                        option.value = index;
+                        option.textContent = `${player.name} (${player.pos})`;
+                        tradeSelect.appendChild(option);
+                    });
+                }
+            });
+            updateTradeControls();
+            highlightSelectedTeam();
+        }
+        window.renderRosters = renderRosters;
+
+        function highlightSelectedTeam() {
+            teams.forEach(team => {
+                const rosterCard = document.getElementById(`roster-${team.name.replace(/\s/g, '')}-card`);
+                if (team.name === selectedTeamName) {
+                    rosterCard.classList.add('selected');
+                } else {
+                    rosterCard.classList.remove('selected');
+                }
+            });
+        }
+        window.highlightSelectedTeam = highlightSelectedTeam;
+        
+        function updateTradeControls() {
+            teams.forEach(team => {
+                const controls = document.getElementById(`trade-player-${team.name.replace(/\s/g, '')}`).closest('div');
+                const sellButton = controls.querySelector('button.bg-red-600');
+                const tradeButton = controls.querySelector('button.bg-yellow-600');
+                const select = controls.querySelector('select');
+                if (team.name === selectedTeamName) {
+                    if (sellButton) sellButton.disabled = false;
+                    if (tradeButton) tradeButton.disabled = false;
+                    if (select) select.disabled = false;
+                    controls.style.opacity = '1';
+                } else {
+                    if (sellButton) sellButton.disabled = true;
+                    if (tradeButton) tradeButton.disabled = true;
+                    if (select) select.disabled = true;
+                    controls.style.opacity = '0.5';
+                }
+            });
+        }
+        window.updateTradeControls = updateTradeControls;
+        
+        function toggleTradeMarket(show) {
+            if (show) {
+                tradeMarket.classList.add('active');
+            } else {
+                tradeMarket.classList.remove('active');
+            }
+        }
+        window.toggleTradeMarket = toggleTradeMarket;
+
+        function startCountdown() {
+            clearInterval(countdownTimer);
+            let timeLeft = 30;
+            countdownElem.textContent = timeLeft;
+
+            countdownTimer = setInterval(() => {
+                timeLeft--;
+                countdownElem.textContent = timeLeft;
+                if (timeLeft <= 0) {
+                    clearInterval(countdownTimer);
+                    if (highestBidder === 'Nadie') {
+                        const myTeam = getTeamByName(selectedTeamName);
+                        myTeam.budget -= 1000000;
+                        updateBudgets();
+                        showMessage('¡Tiempo agotado! Nadie ha pujado. El jugador ha sido saltado. Has perdido $1M por no fichar.');
+                        startNewAuction();
+                    } else {
+                        revealAndEndAuction();
+                    }
+                }
+            }, 1000);
+        }
+        window.startCountdown = startCountdown;
+
+        function startNewAuction() {
+            if (playersDraftedCount > 0 && playersDraftedCount % 6 === 0) {
+                showMessage('¡Fase de Subastas Terminada! El mercado de fichajes está abierto.');
+                toggleTradeMarket(true);
+                return;
+            }
+            
+            toggleTradeMarket(false);
+
+            if (allPlayers.length === 0) {
+                showMessage('¡El draft ha terminado! No hay más jugadores disponibles.');
+                nextPlayerButton.disabled = true;
+                return;
+            }
+
+            const randomIndex = Math.floor(Math.random() * allPlayers.length);
+            currentAuctionPlayer = allPlayers.splice(randomIndex, 1)[0];
+            highestBid = currentAuctionPlayer.price;
+            highestBidder = 'Nadie';
+
+            const nameParts = currentAuctionPlayer.name.split(' ');
+            const initials = `${nameParts[0][0]}. ${nameParts[nameParts.length - 1][0]}.`;
+            
+            currentPlayerNameElem.textContent = initials;
+            currentPlayerNameElem.classList.add('hidden-name');
+            currentPlayerNameElem.classList.remove('revealed-name');
+            playerImageElem.src = currentAuctionPlayer.img || `https://placehold.co/150x150/000000/FFFFFF?text=${nameParts[0][0].toUpperCase()}.${nameParts[nameParts.length - 1][0].toUpperCase()}`;
+            playerImageElem.style.filter = 'grayscale(100%) blur(5px)';
+            
+            flagImageElem.src = `https://flagsapi.com/${currentAuctionPlayer.countryCode}/shiny/64.png`;
+            flagImageElem.alt = currentAuctionPlayer.country;
+            flagImageElem.classList.remove('hidden');
+
+            currentPlayerPositionElem.textContent = `Posición: ${currentAuctionPlayer.pos}`;
+            currentPriceElem.textContent = formatPrice(highestBid);
+            currentBidderElem.textContent = `Última oferta: ${highestBidder}`;
+            
+            nextPlayerButton.disabled = true;
+            revealButton.disabled = !isAdmin;
+            myBidInput.value = '';
+
+            startCountdown();
+        }
+        window.startNewAuction = startNewAuction;
+
+        function placeBid() {
+            if (!currentAuctionPlayer) {
+                showMessage('Por favor, inicia una nueva subasta primero.');
+                return;
+            }
+
+            const bidAmount = parseInt(myBidInput.value, 10);
+            
+            if (isNaN(bidAmount)) {
+                showMessage('Por favor, ingresa una oferta válida.');
+                return;
+            }
+
+            handleBid(selectedTeamName, bidAmount);
+        }
+        window.placeBid = placeBid;
+
+        function bidCurrentPrice() {
+            if (!currentAuctionPlayer) {
+                showMessage('Por favor, inicia una nueva subasta primero.');
+                return;
+            }
+            handleBid(selectedTeamName, highestBid + 1000000);
+        }
+        window.bidCurrentPrice = bidCurrentPrice;
+
+        function bidPlus2M() {
+            if (!currentAuctionPlayer) {
+                showMessage('Por favor, inicia una nueva subasta primero.');
+                return;
+            }
+            handleBid(selectedTeamName, highestBid + 2000000);
+        }
+        window.bidPlus2M = bidPlus2M;
+
+        function handleBid(teamName, bidAmount) {
+            const team = getTeamByName(teamName);
+            if (bidAmount <= highestBid) {
+                showMessage(`Tu oferta debe ser mayor que la oferta actual (${formatPrice(highestBid)})`);
+                return;
+            }
+
+            if (bidAmount > team.budget) {
+                showMessage(`¡Oferta rechazada! El equipo ${team.name} no tiene suficiente presupuesto (${formatPrice(team.budget)}) para esta oferta.`);
+                return;
+            }
+
+            highestBid = bidAmount;
+            highestBidder = team.name;
+            currentPriceElem.textContent = formatPrice(highestBid);
+            currentBidderElem.textContent = `Última oferta: ${highestBidder}`;
+            
+            myBidInput.value = '';
+            
+            startCountdown();
+        }
+        window.handleBid = handleBid;
+
+        function revealAndEndAuction() {
+            if (!isAdmin) {
+                showMessage('Solo el administrador puede revelar al jugador.');
+                return;
+            }
+            clearInterval(countdownTimer);
+            if (!currentAuctionPlayer || highestBidder === 'Nadie') {
+                showMessage('No hay ofertas para este jugador. Inicia una nueva subasta.');
+                return;
+            }
+
+            currentPlayerNameElem.textContent = currentAuctionPlayer.name;
+            currentPlayerNameElem.classList.remove('hidden-name');
+            currentPlayerNameElem.classList.add('revealed-name');
+            playerImageElem.style.filter = 'none';
+            flagImageElem.classList.remove('hidden');
+            
+            const winningTeam = getTeamByName(highestBidder);
+            winningTeam.roster.push({
+                name: currentAuctionPlayer.name,
+                pos: currentAuctionPlayer.pos,
+                price: highestBid,
+                value: currentAuctionPlayer.value,
+                country: currentAuctionPlayer.country,
+                countryCode: currentAuctionPlayer.countryCode
+            });
+            winningTeam.budget -= highestBid;
+            updateBudgets();
+            renderRosters();
+
+            showMessage(`¡Subasta terminada! ${winningTeam.name} ha ganado a ${currentAuctionPlayer.name} por ${formatPrice(highestBid)}.`);
+
+            currentAuctionPlayer = null;
+            playersDraftedCount++;
+            nextPlayerButton.disabled = false;
+            revealButton.disabled = true;
+        }
+        window.revealAndEndAuction = revealAndEndAuction;
+
+        // --- New Trade & Sell Functions ---
+
+        function sellPlayer(teamName) {
+            if (teamName !== selectedTeamName) return;
+
+            const team = getTeamByName(teamName);
+            const select = document.getElementById(`trade-player-${team.name.replace(/\s/g, '')}`);
+            const playerIndex = select.value;
+            if (playerIndex === "") {
+                showMessage('Por favor, selecciona un jugador para vender.');
+                return;
+            }
+
+            const player = team.roster[playerIndex];
+            const sellPrice = player.price / 2;
+            team.budget += sellPrice;
+            team.roster.splice(playerIndex, 1);
+            
+            updateBudgets();
+            renderRosters();
+            showMessage(`¡Venta exitosa! ${player.name} ha sido vendido al banco por ${formatPrice(sellPrice)}.`);
+        }
+        window.sellPlayer = sellPlayer;
+
+        function startTrade(teamName) {
+            if (teamName !== selectedTeamName) return;
+
+            const team = getTeamByName(teamName);
+            const select = document.getElementById(`trade-player-${team.name.replace(/\s/g, '')}`);
+            const playerIndex = select.value;
+            if (playerIndex === "") {
+                showMessage('Por favor, selecciona un jugador para intercambiar.');
+                return;
+            }
+
+            playerToTrade = team.roster[playerIndex];
+            playerToTradeTeamName = team.name;
+
+            tradeDetailsElem.innerHTML = `Intercambio propuesto por el **${playerToTradeTeamName}**:<br>Dar a **${playerToTrade.name}**`;
+
+            targetTeamSelect.innerHTML = '<option value="">Selecciona un equipo...</option>';
+            teams.forEach(t => {
+                if (t.name !== playerToTradeTeamName) {
+                    const option = document.createElement('option');
+                    option.value = t.name;
+                    option.textContent = t.name;
+                    targetTeamSelect.appendChild(option);
+                }
+            });
+
+            targetPlayerSelect.innerHTML = '<option value="">Selecciona un jugador...</option>';
+            
+            targetTeamSelect.onchange = function() {
+                const targetTeam = getTeamByName(this.value);
+                if (targetTeam) {
+                    targetPlayerSelect.innerHTML = '<option value="">Selecciona un jugador...</option>';
+                    targetTeam.roster.forEach((player, index) => {
+                        const option = document.createElement('option');
+                        option.value = index;
+                        option.textContent = `${player.name} (${player.pos}) - Valor ${formatPrice(player.value)}`;
+                        targetPlayerSelect.appendChild(option);
+                    });
+                } else {
+                    targetPlayerSelect.innerHTML = '<option value="">Selecciona un jugador...</option>';
+                }
+            };
+            
+            tradeCashInput.value = '';
+            tradeModal.classList.remove('hidden');
+        }
+        window.startTrade = startTrade;
+
+        function closeModal() {
+            tradeModal.classList.add('hidden');
+        }
+        window.closeModal = closeModal;
+
+        function executeTrade() {
+            const targetTeamName = targetTeamSelect.value;
+            const targetPlayerIndex = targetPlayerSelect.value;
+            const cash = parseInt(tradeCashInput.value, 10) || 0;
+            const myTeam = getTeamByName(playerToTradeTeamName);
+            const targetTeam = getTeamByName(targetTeamName);
+
+            if (!targetTeamName || targetPlayerIndex === "") {
+                showMessage('Por favor, selecciona un equipo y un jugador para el intercambio.');
+                return;
+            }
+            
+            const targetPlayer = targetTeam.roster[targetPlayerIndex];
+
+            if (myTeam.budget - cash < 0) {
+                showMessage(`¡Error! El ${myTeam.name} no tiene suficiente dinero para pagar los ${formatPrice(cash)}.`);
+                return;
+            }
+
+            const playerToTradeIndex = myTeam.roster.indexOf(playerToTrade);
+            const targetPlayerToRemoveIndex = targetTeam.roster.indexOf(targetPlayer);
+
+            if (playerToTradeIndex > -1) {
+                myTeam.roster.splice(playerToTradeIndex, 1);
+            }
+            if (targetPlayerToRemoveIndex > -1) {
+                targetTeam.roster.splice(targetPlayerToRemoveIndex, 1);
+            }
+
+            myTeam.roster.push(targetPlayer);
+            targetTeam.roster.push(playerToTrade);
+
+            myTeam.budget -= cash;
+            targetTeam.budget += cash;
+
+            updateBudgets();
+            renderRosters();
+            closeModal();
+            showMessage(`¡Intercambio exitoso! ${playerToTrade.name} ahora está en el equipo ${targetTeam.name} a cambio de ${targetPlayer.name} y ${formatPrice(cash)}.`);
+        }
+        window.executeTrade = executeTrade;
+        
+        window.onload = initApp;
+
+    </script>
+</body>
+</html>
+
