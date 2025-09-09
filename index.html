@@ -3,136 +3,73 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Draft de Subasta FC 24</title>
+    <title>Draft de Subasta FC 24 Multijugador</title>
     <!-- Incluye Tailwind CSS desde CDN -->
     <script src="https://cdn.tailwindcss.com"></script>
-    <style>
-        body {
-            background-color: #1a202c; /* Fondo oscuro */
-            color: #e2e8f0; /* Color de texto claro */
-            font-family: 'Inter', sans-serif;
-        }
-        .flag-icon {
-            width: 48px; /* Tamaño de bandera más pequeño */
-            height: auto; /* Mantiene la proporción */
-            border-radius: 6px;
-        }
-    </style>
-</head>
-<body class="flex items-center justify-center min-h-screen">
-    <!-- Botón de Volver, inicialmente oculto y fijo en la esquina superior izquierda -->
-    <button
-        id="back-btn-global"
-        class="fixed top-4 left-4 p-3 bg-gray-600 hover:bg-gray-700 text-white font-bold rounded-full transition duration-300 ease-in-out transform hover:scale-110 shadow-lg focus:outline-none focus:ring-4 focus:ring-gray-500 focus:ring-opacity-50 hidden"
-        aria-label="Volver a la pantalla anterior"
-    >
-        <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7" />
-        </svg>
-    </button>
+    <!-- Incluye Firebase -->
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.3/firebase-app.js";
+        import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.3/firebase-auth.js";
+        import { getFirestore, doc, setDoc, getDoc, updateDoc, onSnapshot, collection, query, addDoc } from "https://www.gstatic.com/firebasejs/10.12.3/firebase-firestore.js";
+        
+        // Variables globales del entorno
+        const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+        const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : {};
+        const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
 
-    <div class="bg-gray-800 p-8 rounded-2xl shadow-2xl max-w-lg w-full text-center">
-        <!-- Título de la aplicación -->
-        <h1 class="text-4xl font-extrabold mb-6 text-transparent bg-clip-text bg-gradient-to-r from-purple-400 to-pink-600">
-            Draft de Subasta FC 24
-        </h1>
+        // Inicializa Firebase
+        const app = initializeApp(firebaseConfig);
+        const auth = getAuth(app);
+        const db = getFirestore(app);
+        
+        let userId = null;
+        let gameId = null;
+        let isHost = false;
 
-        <!-- Sección de selección de jugadores -->
-        <div id="player-select-section">
-            <div class="mb-6">
-                <label for="num-players" class="block text-sm font-semibold mb-2">
-                    Selecciona la cantidad de jugadores:
-                </label>
-                <select id="num-players" class="w-full p-3 rounded-lg bg-gray-700 border border-gray-600 text-white focus:outline-none focus:border-blue-500 transition duration-200">
-                    <option value="2">2</option>
-                    <option value="3">3</option>
-                    <option value="4">4</option>
-                    <option value="5">5</option>
-                    <option value="6">6</option>
-                    <option value="7">7</option>
-                    <option value="8">8</option>
-                </select>
-            </div>
-            
-            <button
-                id="start-draft-btn"
-                class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-6 rounded-xl transition duration-300 ease-in-out transform hover:scale-105 shadow-lg focus:outline-none focus:ring-4 focus:ring-blue-500 focus:ring-opacity-50"
-            >
-                Empezar Subasta
-            </button>
-        </div>
+        // Manejadores del DOM
+        const lobbySection = document.getElementById('lobby-section');
+        const playerSelectSection = document.getElementById('player-select-section');
+        const playerNamesSection = document.getElementById('player-names-section');
+        const auctionSection = document.getElementById('auction-section');
+        const backBtn = document.getElementById('back-btn-global');
+        const messageContainer = document.getElementById('message-container');
+        const messageText = document.getElementById('message-text');
+        const userIdDisplay = document.getElementById('user-id-display');
 
-        <!-- Sección de ingreso de nombres, inicialmente oculta -->
-        <div id="player-names-section" class="hidden">
-            <h2 class="text-2xl font-bold mb-4">Ingresa los Nombres</h2>
-            <div id="player-name-inputs" class="space-y-4">
-                <!-- Aquí se generarán los campos de texto -->
-            </div>
-            <button
-                id="confirm-names-btn"
-                class="w-full mt-6 bg-green-600 hover:bg-green-700 text-white font-bold py-3 px-6 rounded-xl transition duration-300 ease-in-out transform hover:scale-105 shadow-lg focus:outline-none focus:ring-4 focus:ring-green-500 focus:ring-opacity-50"
-            >
-                Confirmar Nombres
-            </button>
-        </div>
+        // Manejadores de botones
+        const createGameBtn = document.getElementById('create-game-btn');
+        const joinGameBtn = document.getElementById('join-game-btn');
+        const startGameBtn = document.getElementById('start-draft-btn');
+        const confirmNamesBtn = document.getElementById('confirm-names-btn');
+        const hintBtn = document.getElementById('hint-btn');
+        const numPlayersSelect = document.getElementById('num-players');
 
-        <!-- Sección de Subasta, inicialmente oculta -->
-        <div id="auction-section" class="hidden text-center">
-            <div id="auction-container" class="mb-6">
-                <h2 id="auction-timer" class="text-4xl font-extrabold text-white mb-4"></h2>
-                
-                <!-- Info del jugador en subasta -->
-                <div id="player-info" class="p-6 rounded-xl bg-gray-700 shadow-lg">
-                    <p id="player-name" class="text-3xl font-extrabold mb-4"></p>
-                    <div id="player-nationality" class="mb-4 flex flex-col items-center">
-                        <img id="flag-img" src="" alt="Bandera del país del jugador" class="flag-icon mb-2">
-                        <p id="player-country" class="text-xl font-bold"></p>
-                    </div>
-                    <p id="player-position" class="text-xl font-bold mb-2"></p>
-                    <p id="current-bid-text" class="text-2xl font-semibold text-green-400"></p>
-                    <p id="highest-bidder-text" class="text-sm text-gray-400 mt-2"></p>
-                </div>
-            </div>
+        // Lógica de autenticación
+        onAuthStateChanged(auth, async (user) => {
+            if (user) {
+                userId = user.uid;
+                userIdDisplay.textContent = `Tu ID: ${userId}`;
+                lobbySection.classList.remove('hidden');
+                playerSelectSection.classList.add('hidden');
+                auctionSection.classList.add('hidden');
+            } else {
+                if (initialAuthToken) {
+                    await signInWithCustomToken(auth, initialAuthToken);
+                } else {
+                    await signInAnonymously(auth);
+                }
+            }
+        });
 
-            <!-- Botones de puja -->
-            <div id="bid-buttons" class="space-y-4 mb-6">
-                <!-- Los botones de puja se renderizan aquí -->
-            </div>
+        // Variables del juego
+        let currentAuctionPlayer = null;
+        let timerInterval = null;
+        const INITIAL_BUDGET = 1500000000;
+        const BID_INCREMENT = 5000000;
+        const BID_HINT_INCREMENT = 5000000;
+        let auctionQueue = [];
 
-            <!-- Botón de pista -->
-            <button
-                id="hint-btn"
-                class="w-full bg-yellow-500 hover:bg-yellow-600 text-gray-900 font-bold py-3 px-6 rounded-xl transition duration-300 ease-in-out transform hover:scale-105 shadow-lg focus:outline-none focus:ring-4 focus:ring-yellow-400 focus:ring-opacity-50 mb-6"
-            >
-                <span class="flex items-center justify-center">
-                    <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.663 17h4.674M12 3v12.5M12 18h.01M16.5 10c0-2.828-2.172-5-5-5s-5 2.172-5 5c0 1.25.45 2.45 1.28 3.33L10 16.5V21h4v-4.5L15.22 13.33C15.54 12.9 16.5 11.5 16.5 10z"/>
-                    </svg>
-                    Pista
-                </span>
-            </button>
-
-            <!-- Inventarios de los jugadores -->
-            <div id="player-inventories">
-                <h3 class="text-lg font-semibold mb-2">Plantillas de los Jugadores:</h3>
-                <!-- Los inventarios se renderizan aquí -->
-            </div>
-        </div>
-
-        <!-- Contenedor para mensajes de usuario -->
-        <div id="message-container" class="mt-6 p-4 rounded-lg text-sm transition-all duration-300 ease-in-out hidden">
-            <p id="message-text" class="font-semibold"></p>
-        </div>
-    </div>
-
-    <script>
-        // Variables globales para el estado del juego
-        let players = [];
-        const INITIAL_BUDGET = 1500000000; // 1.500 millones
-        const BID_INCREMENT = 5000000; // 5 millones de incremento por puja
-        const BID_HINT_INCREMENT = 5000000; // 5 millones de incremento por pista
-        let itemPool = [
-            // Delanteros (30)
+        const itemPool = [
             { name: 'Kylian Mbappé', value: 180000000, nationality: 'Francia', position: 'Delantero' }, { name: 'Erling Haaland', value: 180000000, nationality: 'Noruega', position: 'Delantero' },
             { name: 'Vinícius Jr.', value: 150000000, nationality: 'Brasil', position: 'Delantero' }, { name: 'Jude Bellingham', value: 180000000, nationality: 'Inglaterra', position: 'Delantero' },
             { name: 'Mohamed Salah', value: 65000000, nationality: 'Egipto', position: 'Delantero' }, { name: 'Robert Lewandowski', value: 40000000, nationality: 'Polonia', position: 'Delantero' },
@@ -141,15 +78,13 @@
             { name: 'Rafael Leão', value: 90000000, nationality: 'Portugal', position: 'Delantero' }, { name: 'Ousmane Dembélé', value: 60000000, nationality: 'Francia', position: 'Delantero' },
             { name: 'Khvicha Kvaratskhelia', value: 85000000, nationality: 'Georgia', position: 'Delantero' }, { name: 'Federico Chiesa', value: 40000000, nationality: 'Italia', position: 'Delantero' },
             { name: 'Phil Foden', value: 110000000, nationality: 'Inglaterra', position: 'Delantero' }, { name: 'Gabriel Martinelli', value: 80000000, nationality: 'Brasil', position: 'Delantero' },
-            { name: 'Marcus Rashford', value: 75000000, nationality: 'Inglaterra', position: 'Delantero' }, { name: 'Kingsley Coman', value: 65000000, nationality: 'Francia', position: 'Delantero' },
+            { name: 'Marcus Rashford', value: 75000000, nationality: 'Inglaterro', position: 'Delantero' }, { name: 'Kingsley Coman', value: 65000000, nationality: 'Francia', position: 'Delantero' },
             { name: 'Joao Félix', value: 40000000, nationality: 'Portugal', position: 'Delantero' }, { name: 'Lautaro Martínez', value: 110000000, nationality: 'Argentina', position: 'Delantero' },
             { name: 'Dusan Vlahović', value: 60000000, nationality: 'Serbia', position: 'Delantero' }, { name: 'Luis Díaz', value: 75000000, nationality: 'Colombia', position: 'Delantero' },
             { name: 'Neymar Jr.', value: 45000000, nationality: 'Brasil', position: 'Delantero' }, { name: 'Rodrygo', value: 100000000, nationality: 'Brasil', position: 'Delantero' },
             { name: 'Julian Álvarez', value: 90000000, nationality: 'Argentina', position: 'Delantero' }, { name: 'Christopher Nkunku', value: 75000000, nationality: 'Francia', position: 'Delantero' },
             { name: 'Victor Boniface', value: 40000000, nationality: 'Nigeria', position: 'Delantero' }, { name: 'Domenico Berardi', value: 20000000, nationality: 'Italia', position: 'Delantero' },
             { name: 'Serge Gnabry', value: 45000000, nationality: 'Alemania', position: 'Delantero' }, { name: 'Lionel Messi', value: 35000000, nationality: 'Argentina', position: 'Delantero' },
-
-            // Mediocampistas (40)
             { name: 'Kevin De Bruyne', value: 70000000, nationality: 'Bélgica', position: 'Mediocampista' }, { name: 'Rodri', value: 110000000, nationality: 'España', position: 'Mediocampista' },
             { name: 'Bernardo Silva', value: 80000000, nationality: 'Portugal', position: 'Mediocampista' }, { name: 'Jamal Musiala', value: 110000000, nationality: 'Alemania', position: 'Mediocampista' },
             { name: 'Frenkie De Jong', value: 75000000, nationality: 'Países Bajos', position: 'Mediocampista' }, { name: 'Bruno Fernandes', value: 70000000, nationality: 'Portugal', position: 'Mediocampista' },
@@ -170,8 +105,6 @@
             { name: 'Mason Mount', value: 45000000, nationality: 'Inglaterra', position: 'Mediocampista' }, { name: 'Thiago Alcântara', value: 15000000, nationality: 'España', position: 'Mediocampista' },
             { name: 'Fabinho', value: 30000000, nationality: 'Brasil', position: 'Mediocampista' }, { name: 'Conor Gallagher', value: 40000000, nationality: 'Inglaterra', position: 'Mediocampista' },
             { name: 'João Palhinha', value: 55000000, nationality: 'Portugal', position: 'Mediocampista' }, { name: 'James Maddison', value: 70000000, nationality: 'Inglaterra', position: 'Mediocampista' },
-
-            // Defensas (30)
             { name: 'Virgil van Dijk', value: 40000000, nationality: 'Países Bajos', position: 'Defensa' }, { name: 'Rúben Dias', value: 80000000, nationality: 'Portugal', position: 'Defensa' },
             { name: 'Ronald Araujo', value: 70000000, nationality: 'Uruguay', position: 'Defensa' }, { name: 'Matthijs de Ligt', value: 65000000, nationality: 'Países Bajos', position: 'Defensa' },
             { name: 'Éder Militão', value: 70000000, nationality: 'Brasil', position: 'Defensa' }, { name: 'Kyle Walker', value: 13000000, nationality: 'Inglaterra', position: 'Defensa' },
@@ -187,8 +120,6 @@
             { name: 'Fikayo Tomori', value: 40000000, nationality: 'Inglaterra', position: 'Defensa' }, { name: 'Bremer', value: 40000000, nationality: 'Brasil', position: 'Defensa' },
             { name: 'David Alaba', value: 40000000, nationality: 'Austria', position: 'Defensa' }, { name: 'Gabriel Magalhães', value: 65000000, nationality: 'Brasil', position: 'Defensa' },
             { name: 'Marquinhos', value: 65000000, nationality: 'Brasil', position: 'Defensa' }, { name: 'Koulibaly', value: 25000000, nationality: 'Senegal', position: 'Defensa' },
-
-            // Arqueros (20)
             { name: 'Thibaut Courtois', value: 45000000, nationality: 'Bélgica', position: 'Arquero' }, { name: 'Jan Oblak', value: 30000000, nationality: 'Eslovenia', position: 'Arquero' },
             { name: 'Alisson Becker', value: 45000000, nationality: 'Brasil', position: 'Arquero' }, { name: 'Marc-André ter Stegen', value: 40000000, nationality: 'Alemania', position: 'Arquero' },
             { name: 'Ederson', value: 45000000, nationality: 'Brasil', position: 'Arquero' }, { name: 'Mike Maignan', value: 40000000, nationality: 'Francia', position: 'Arquero' },
@@ -201,80 +132,7 @@
             { name: 'Alphonse Areola', value: 8000000, nationality: 'Francia', position: 'Arquero' }, { name: 'Robert Sánchez', value: 25000000, nationality: 'España', position: 'Arquero' }
         ];
 
-        let auctionQueue = [];
-        let currentAuctionPlayer = null;
-        let currentBid = 0;
-        let highestBidder = null;
-        let timer = 30;
-        let timerInterval = null;
-        let hintsUsed = 0; // Nuevo: contador de pistas usadas por jugador
-        let revealedFirstNameLength = 0;
-        let revealedLastNameLength = 0;
-        
-        // Función para obtener el código SVG de una bandera
-        function getFlagURL(country) {
-            const flagUrls = {
-                'Francia': 'https://upload.wikimedia.org/wikipedia/commons/c/c3/Flag_of_France.svg',
-                'Noruega': 'https://upload.wikimedia.org/wikipedia/commons/d/d9/Flag_of_Norway.svg',
-                'Brasil': 'https://upload.wikimedia.org/wikipedia/commons/0/05/Flag_of_Brazil.svg',
-                'Inglaterra': 'https://upload.wikimedia.org/wikipedia/commons/b/be/Flag_of_England.svg',
-                'Egipto': 'https://upload.wikimedia.org/wikipedia/commons/f/fe/Flag_of_Egypt.svg',
-                'Polonia': 'https://upload.wikimedia.org/wikipedia/commons/1/12/Flag_of_Poland.svg',
-                'Nigeria': 'https://upload.wikimedia.org/wikipedia/commons/7/79/Flag_of_Nigeria.svg',
-                'Corea del Sur': 'https://upload.wikimedia.org/wikipedia/commons/0/09/Flag_of_South_Korea.svg',
-                'Portugal': 'https://upload.wikimedia.org/wikipedia/commons/5/5c/Flag_of_Portugal.svg',
-                'Georgia': 'https://upload.wikimedia.org/wikipedia/commons/0/0f/Flag_of_Georgia.svg',
-                'Colombia': 'https://upload.wikimedia.org/wikipedia/commons/2/21/Flag_of_Colombia.svg',
-                'Argentina': 'https://upload.wikimedia.org/wikipedia/commons/1/1a/Flag_of_Argentina.svg',
-                'Serbia': 'https://upload.wikimedia.org/wikipedia/commons/f/ff/Flag_of_Serbia.svg',
-                'Italia': 'https://upload.wikimedia.org/wikipedia/commons/0/03/Flag_of_Italy.svg',
-                'Países Bajos': 'https://upload.wikimedia.org/wikipedia/commons/2/20/Flag_of_the_Netherlands.svg',
-                'Bélgica': 'https://upload.wikimedia.org/wikipedia/commons/6/65/Flag_of_Belgium.svg',
-                'Uruguay': 'https://upload.wikimedia.org/wikipedia/commons/f/fe/Flag_of_Uruguay.svg',
-                'Croacia': 'https://upload.wikimedia.org/wikipedia/commons/1/1b/Flag_of_Croatia.svg',
-                'Alemania': 'https://upload.wikimedia.org/wikipedia/commons/b/ba/Flag_of_Germany.svg',
-                'Turquía': 'https://upload.wikimedia.org/wikipedia/commons/b/b3/Flag_of_Turkey.svg',
-                'Argelia': 'https://upload.wikimedia.org/wikipedia/commons/7/7b/Flag_of_Algeria.svg',
-                'Marruecos': 'https://upload.wikimedia.org/wikipedia/commons/2/2c/Flag_of_Morocco.svg',
-                'Canadá': 'https://upload.wikimedia.org/wikipedia/commons/d/d9/Flag_of_Canada_%28Pantone%29.svg',
-                'Eslovaquia': 'https://upload.wikimedia.org/wikipedia/commons/e/e6/Flag_of_Slovakia.svg',
-                'Escocia': 'https://upload.wikimedia.org/wikipedia/commons/1/10/Flag_of_Scotland.svg',
-                'Austria': 'https://upload.wikimedia.org/wikipedia/commons/4/41/Flag_of_Austria.svg',
-                'Eslovenia': 'https://upload.wikimedia.org/wikipedia/commons/f/f0/Flag_of_Slovenia.svg',
-                'Camerún': 'https://upload.wikimedia.org/wikipedia/commons/4/4f/Flag_of_Cameroon.svg',
-                'Suiza': 'https://upload.wikimedia.org/wikipedia/commons/f/f3/Flag_of_Switzerland.svg',
-                'Hungría': 'https://upload.wikimedia.org/wikipedia/commons/c/c1/Flag_of_Hungary.svg',
-                'Senegal': 'https://upload.wikimedia.org/wikipedia/commons/f/fd/Flag_of_Senegal.svg',
-                'España': 'https://upload.wikimedia.org/wikipedia/commons/9/9a/Flag_of_Spain.svg'
-            };
-            return flagUrls[country] || 'https://upload.wikimedia.org/wikipedia/commons/a/a2/Flag_of_None.svg'; // Bandera de fallback
-        }
-        
-        function updateDisplayedName() {
-            if (!currentAuctionPlayer) return;
-
-            const name = currentAuctionPlayer.name;
-            const parts = name.split(' ');
-            
-            let displayedName = '';
-            
-            // Lógica para el primer nombre
-            displayedName += parts[0].substring(0, revealedFirstNameLength);
-            
-            // Lógica para el resto del nombre (apellido, etc.)
-            if (parts.length > 1) {
-                displayedName += ' ';
-                const lastName = parts.slice(1).join(' ');
-                displayedName += lastName.substring(0, revealedLastNameLength);
-            }
-            
-            // Reemplaza el resto de las letras con asteriscos
-            const hiddenLength = name.length - displayedName.length;
-            const hiddenPart = '*'.repeat(Math.max(0, hiddenLength));
-
-            document.getElementById('player-name').textContent = displayedName + hiddenPart;
-        }
-
+        // Lógica de UI
         const numberFormatter = new Intl.NumberFormat('es-ES', {
             style: 'currency',
             currency: 'EUR',
@@ -282,11 +140,46 @@
             maximumFractionDigits: 0
         });
 
-        // Función para mostrar mensajes de usuario
+        const flagUrls = {
+            'Francia': 'https://upload.wikimedia.org/wikipedia/commons/c/c3/Flag_of_France.svg',
+            'Noruega': 'https://upload.wikimedia.org/wikipedia/commons/d/d9/Flag_of_Norway.svg',
+            'Brasil': 'https://upload.wikimedia.org/wikipedia/commons/0/05/Flag_of_Brazil.svg',
+            'Inglaterra': 'https://upload.wikimedia.org/wikipedia/commons/b/be/Flag_of_England.svg',
+            'Egipto': 'https://upload.wikimedia.org/wikipedia/commons/f/fe/Flag_of_Egypt.svg',
+            'Polonia': 'https://upload.wikimedia.org/wikipedia/commons/1/12/Flag_of_Poland.svg',
+            'Nigeria': 'https://upload.wikimedia.org/wikipedia/commons/7/79/Flag_of_Nigeria.svg',
+            'Corea del Sur': 'https://upload.wikimedia.org/wikipedia/commons/0/09/Flag_of_South_Korea.svg',
+            'Portugal': 'https://upload.wikimedia.org/wikipedia/commons/5/5c/Flag_of_Portugal.svg',
+            'Georgia': 'https://upload.wikimedia.org/wikipedia/commons/0/0f/Flag_of_Georgia.svg',
+            'Colombia': 'https://upload.wikimedia.org/wikipedia/commons/2/21/Flag_of_Colombia.svg',
+            'Argentina': 'https://upload.wikimedia.org/wikipedia/commons/1/1a/Flag_of_Argentina.svg',
+            'Serbia': 'https://upload.wikimedia.org/wikipedia/commons/f/ff/Flag_of_Serbia.svg',
+            'Italia': 'https://upload.wikimedia.org/wikipedia/commons/0/03/Flag_of_Italy.svg',
+            'Países Bajos': 'https://upload.wikimedia.org/wikipedia/commons/2/20/Flag_of_the_Netherlands.svg',
+            'Bélgica': 'https://upload.wikimedia.org/wikipedia/commons/6/65/Flag_of_Belgium.svg',
+            'Uruguay': 'https://upload.wikimedia.org/wikipedia/commons/f/fe/Flag_of_Uruguay.svg',
+            'Croacia': 'https://upload.wikimedia.org/wikipedia/commons/1/1b/Flag_of_Croatia.svg',
+            'Alemania': 'https://upload.wikimedia.org/wikipedia/commons/b/ba/Flag_of_Germany.svg',
+            'Turquía': 'https://upload.wikimedia.org/wikipedia/commons/b/b3/Flag_of_Turkey.svg',
+            'Argelia': 'https://upload.wikimedia.org/wikipedia/commons/7/7b/Flag_of_Algeria.svg',
+            'Marruecos': 'https://upload.wikimedia.org/wikipedia/commons/2/2c/Flag_of_Morocco.svg',
+            'Canadá': 'https://upload.wikimedia.org/wikipedia/commons/d/d9/Flag_of_Canada_%28Pantone%29.svg',
+            'Eslovaquia': 'https://upload.wikimedia.org/wikipedia/commons/e/e6/Flag_of_Slovakia.svg',
+            'Escocia': 'https://upload.wikimedia.org/wikipedia/commons/1/10/Flag_of_Scotland.svg',
+            'Austria': 'https://upload.wikimedia.org/wikipedia/commons/4/41/Flag_of_Austria.svg',
+            'Eslovenia': 'https://upload.wikimedia.org/wikipedia/commons/f/f0/Flag_of_Slovenia.svg',
+            'Camerún': 'https://upload.wikimedia.org/wikipedia/commons/4/4f/Flag_of_Cameroon.svg',
+            'Suiza': 'https://upload.wikimedia.org/wikipedia/commons/f/f3/Flag_of_Switzerland.svg',
+            'Hungría': 'https://upload.wikimedia.org/wikipedia/commons/c/c1/Flag_of_Hungary.svg',
+            'Senegal': 'https://upload.wikimedia.org/wikipedia/commons/f/fd/Flag_of_Senegal.svg',
+            'España': 'https://upload.wikimedia.org/wikipedia/commons/9/9a/Flag_of_Spain.svg'
+        };
+
+        function getFlagURL(country) {
+            return flagUrls[country] || 'https://upload.wikimedia.org/wikipedia/commons/a/a2/Flag_of_None.svg';
+        }
+
         function showMessage(text, type) {
-            const container = document.getElementById('message-container');
-            const messageText = document.getElementById('message-text');
-            
             let bgColor = '';
             let textColor = '';
             if (type === 'success') {
@@ -299,13 +192,11 @@
                 bgColor = 'bg-red-500';
                 textColor = 'text-red-100';
             }
-
-            container.className = `mt-6 p-4 rounded-lg text-sm transition-all duration-300 ease-in-out ${bgColor} ${textColor}`;
+            messageContainer.className = `mt-6 p-4 rounded-lg text-sm transition-all duration-300 ease-in-out ${bgColor} ${textColor}`;
             messageText.innerHTML = text;
-            container.classList.remove('hidden');
+            messageContainer.classList.remove('hidden');
         }
-        
-        // Fisher-Yates shuffle
+
         function shuffle(array) {
             for (let i = array.length - 1; i > 0; i--) {
                 const j = Math.floor(Math.random() * (i + 1));
@@ -313,7 +204,251 @@
             }
         }
 
-        function renderAuctionScreen() {
+        function updateDisplayedName(player) {
+            if (!player) return;
+            const name = player.name;
+            const parts = name.split(' ');
+            let displayedName = '';
+            let revealedFirstNameLength = player.revealedFirstNameLength || 0;
+            let revealedLastNameLength = player.revealedLastNameLength || 0;
+
+            displayedName += parts[0].substring(0, revealedFirstNameLength);
+
+            if (parts.length > 1) {
+                displayedName += ' ';
+                const lastName = parts.slice(1).join(' ');
+                displayedName += lastName.substring(0, revealedLastNameLength);
+            }
+            const hiddenLength = name.length - displayedName.length;
+            const hiddenPart = '*'.repeat(Math.max(0, hiddenLength));
+            document.getElementById('player-name').textContent = displayedName + hiddenPart;
+        }
+
+        // Lógica de Firestore
+        async function createGame() {
+            if (!userId) {
+                showMessage('Error: No se pudo autenticar al usuario. Inténtalo de nuevo.', 'error');
+                return;
+            }
+            const newGameId = Math.random().toString(36).substring(2, 8).toUpperCase();
+            gameId = newGameId;
+            isHost = true;
+            const gameRef = doc(db, 'artifacts', appId, 'public', 'data', 'games', gameId);
+            const numPlayers = parseInt(numPlayersSelect.value, 10);
+            const initialGameState = {
+                players: [{ id: userId, name: '', budget: INITIAL_BUDGET, items: [], isHost: true }],
+                status: 'waiting',
+                numPlayers: numPlayers,
+                currentAuctionPlayer: null,
+                currentBid: 0,
+                highestBidderId: null,
+                revealedFirstNameLength: 0,
+                revealedLastNameLength: 0,
+                hintsUsed: 0,
+                auctionEndTime: 0,
+                auctionQueue: []
+            };
+            try {
+                await setDoc(gameRef, initialGameState);
+                showMessage(`Juego creado. ID: ${gameId}. ¡Comparte este ID para que se unan!`, 'success');
+                startListeningToGame(gameRef);
+            } catch (e) {
+                showMessage(`Error al crear el juego: ${e.message}`, 'error');
+            }
+        }
+
+        async function joinGame() {
+            const idInput = document.getElementById('join-game-id-input');
+            const idToJoin = idInput.value.trim().toUpperCase();
+            if (!idToJoin) {
+                showMessage('Por favor, ingresa un ID de juego válido.', 'error');
+                return;
+            }
+            gameId = idToJoin;
+            const gameRef = doc(db, 'artifacts', appId, 'public', 'data', 'games', gameId);
+            try {
+                const gameDoc = await getDoc(gameRef);
+                if (!gameDoc.exists()) {
+                    showMessage(`No se encontró un juego con el ID ${gameId}.`, 'error');
+                    return;
+                }
+                const gameState = gameDoc.data();
+                if (gameState.players.length >= gameState.numPlayers) {
+                    showMessage('El juego ya está lleno.', 'error');
+                    gameId = null;
+                    return;
+                }
+                if (gameState.players.find(p => p.id === userId)) {
+                     showMessage('Ya estás en este juego.', 'info');
+                     startListeningToGame(gameRef);
+                     return;
+                }
+                const newPlayer = { id: userId, name: '', budget: INITIAL_BUDGET, items: [] };
+                await updateDoc(gameRef, {
+                    players: [...gameState.players, newPlayer]
+                });
+                showMessage('¡Te uniste al juego! Esperando al host para empezar.', 'success');
+                startListeningToGame(gameRef);
+            } catch (e) {
+                showMessage(`Error al unirse al juego: ${e.message}`, 'error');
+            }
+        }
+        
+        function startListeningToGame(gameRef) {
+             onSnapshot(gameRef, (docSnapshot) => {
+                 if (docSnapshot.exists()) {
+                     const gameState = docSnapshot.data();
+                     updateUI(gameState);
+                 } else {
+                     showMessage('El juego ha sido eliminado.', 'error');
+                     backToLobby();
+                 }
+             }, (error) => {
+                 showMessage(`Error de conexión: ${error.message}`, 'error');
+             });
+        }
+
+        function updateUI(gameState) {
+            // Lógica para mostrar las pantallas correctas según el estado
+            if (gameState.status === 'waiting') {
+                lobbySection.classList.add('hidden');
+                playerSelectSection.classList.add('hidden');
+                auctionSection.classList.add('hidden');
+                playerNamesSection.classList.remove('hidden');
+                backBtn.classList.add('hidden');
+                // Renderizar inputs de nombres para todos los jugadores
+                renderPlayerNameInputs(gameState.players, isHost);
+                // Si ya ingresé mi nombre, lo muestro en el input
+                const myPlayer = gameState.players.find(p => p.id === userId);
+                if (myPlayer && myPlayer.name) {
+                    const myInput = document.getElementById(`player-name-${myPlayer.id}`);
+                    if (myInput) myInput.value = myPlayer.name;
+                }
+                // Habilitar/deshabilitar botón de inicio
+                if (isHost && gameState.players.every(p => p.name.length > 0)) {
+                    startGameBtn.classList.remove('hidden');
+                } else {
+                    startGameBtn.classList.add('hidden');
+                }
+            } else if (gameState.status === 'in_progress') {
+                playerNamesSection.classList.add('hidden');
+                auctionSection.classList.remove('hidden');
+                backBtn.classList.remove('hidden');
+                renderAuctionScreen(gameState);
+            } else if (gameState.status === 'finished') {
+                playerNamesSection.classList.add('hidden');
+                auctionSection.classList.remove('hidden');
+                backBtn.classList.remove('hidden');
+                renderAuctionScreen(gameState); // Esto mostrará el mensaje de fin de draft
+            }
+        }
+
+        async function renderPlayerNameInputs(players, isHost) {
+            const container = document.getElementById('player-name-inputs');
+            container.innerHTML = '';
+            players.forEach(player => {
+                const div = document.createElement('div');
+                div.className = "flex items-center space-x-2";
+                const input = document.createElement('input');
+                input.id = `player-name-${player.id}`;
+                input.type = "text";
+                input.placeholder = `Nombre del Jugador ${players.indexOf(player) + 1}`;
+                input.className = "w-full p-3 rounded-lg bg-gray-700 border border-gray-600 text-white focus:outline-none focus:border-blue-500 transition duration-200";
+                
+                // Si soy yo, el input es editable. Si no, es de solo lectura.
+                if (player.id !== userId) {
+                    input.disabled = true;
+                    input.value = player.name;
+                }
+                
+                const span = document.createElement('span');
+                span.textContent = `(${player.name || 'Esperando...'})`;
+                span.className = "text-sm text-gray-400";
+                
+                div.appendChild(input);
+                if (player.id !== userId) {
+                    div.appendChild(span);
+                }
+                
+                container.appendChild(div);
+            });
+             confirmNamesBtn.classList.remove('hidden');
+             // Si soy host, muestro el botón de iniciar
+             startGameBtn.classList.add('hidden');
+        }
+
+        async function confirmPlayerNames() {
+            const myInput = document.getElementById(`player-name-${userId}`);
+            const myName = myInput.value.trim();
+            if (!myName) {
+                showMessage('Por favor, ingresa tu nombre.', 'error');
+                return;
+            }
+            try {
+                const gameRef = doc(db, 'artifacts', appId, 'public', 'data', 'games', gameId);
+                const gameDoc = await getDoc(gameRef);
+                const gameState = gameDoc.data();
+                
+                const updatedPlayers = gameState.players.map(p => {
+                    if (p.id === userId) {
+                        return { ...p, name: myName };
+                    }
+                    return p;
+                });
+                await updateDoc(gameRef, { players: updatedPlayers });
+                showMessage('Nombre guardado. Esperando a los demás jugadores...', 'success');
+            } catch (e) {
+                showMessage(`Error al guardar el nombre: ${e.message}`, 'error');
+            }
+        }
+
+        async function startDraft() {
+            if (!isHost) return;
+            try {
+                const gameRef = doc(db, 'artifacts', appId, 'public', 'data', 'games', gameId);
+                const gameDoc = await getDoc(gameRef);
+                const gameState = gameDoc.data();
+                if (gameState.players.length !== gameState.numPlayers) {
+                    showMessage('No todos los jugadores se han unido aún.', 'error');
+                    return;
+                }
+                if (!gameState.players.every(p => p.name.length > 0)) {
+                     showMessage('Por favor, asegúrate de que todos los jugadores hayan ingresado sus nombres.', 'error');
+                     return;
+                }
+                
+                shuffle(itemPool);
+                const initialQueue = itemPool.slice(0, 50); // Usamos los primeros 50 jugadores
+
+                const firstPlayer = initialQueue.shift();
+                const now = Date.now();
+                const auctionEndTime = now + 30000;
+
+                const firstAuctionPlayer = {
+                    name: firstPlayer.name,
+                    nationality: firstPlayer.nationality,
+                    position: firstPlayer.position
+                };
+                
+                await setDoc(gameRef, {
+                    ...gameState,
+                    status: 'in_progress',
+                    auctionQueue: JSON.stringify(initialQueue),
+                    currentAuctionPlayer: firstAuctionPlayer,
+                    currentBid: firstPlayer.value,
+                    highestBidderId: null,
+                    auctionEndTime: auctionEndTime,
+                    revealedFirstNameLength: 1,
+                    revealedLastNameLength: firstPlayer.name.split(' ').length > 1 ? 1 : 0,
+                    hintsUsed: 0,
+                });
+            } catch (e) {
+                showMessage(`Error al iniciar el draft: ${e.message}`, 'error');
+            }
+        }
+
+        function renderAuctionScreen(gameState) {
+            const { players, currentAuctionPlayer: player, currentBid, highestBidderId, auctionEndTime, hintsUsed, revealedFirstNameLength, revealedLastNameLength } = gameState;
             const auctionTimerElement = document.getElementById('auction-timer');
             const playerInfoDiv = document.getElementById('player-info');
             const playerFlagImg = document.getElementById('flag-img');
@@ -324,47 +459,64 @@
             const bidButtonsContainer = document.getElementById('bid-buttons');
             const playerInventoriesContainer = document.getElementById('player-inventories');
             const hintBtn = document.getElementById('hint-btn');
-
-            if (!currentAuctionPlayer) {
-                 auctionTimerElement.textContent = "¡Fin del Draft!";
-                 playerInfoDiv.classList.add('hidden');
-                 bidButtonsContainer.innerHTML = '';
-                 hintBtn.classList.add('hidden'); // Ocultar el botón de pista
-                 return;
+            
+            if (!player) {
+                auctionTimerElement.textContent = "¡Fin del Draft!";
+                playerInfoDiv.classList.add('hidden');
+                bidButtonsContainer.innerHTML = '';
+                hintBtn.classList.add('hidden');
+                showMessage("El draft ha terminado. ¡Revisa tu plantilla!", 'success');
+                return;
             }
+            
+            // Actualizar el temporizador localmente
+            if (timerInterval) clearInterval(timerInterval);
+            timerInterval = setInterval(() => {
+                const remaining = Math.max(0, Math.floor((auctionEndTime - Date.now()) / 1000));
+                auctionTimerElement.textContent = `Tiempo restante: ${remaining}s`;
+                if (remaining <= 0) {
+                     clearInterval(timerInterval);
+                     if (isHost) {
+                         endAuction(gameState);
+                     }
+                }
+            }, 1000);
 
             // Actualiza la info del jugador en subasta
-            updateDisplayedName(); // Actualiza el nombre que se muestra
-            playerFlagImg.src = getFlagURL(currentAuctionPlayer.nationality);
-            playerFlagImg.alt = `Bandera de ${currentAuctionPlayer.nationality}`;
-            playerCountryElement.textContent = currentAuctionPlayer.nationality;
-            playerPositionElement.textContent = currentAuctionPlayer.position;
+            const localPlayer = { ...player, revealedFirstNameLength, revealedLastNameLength };
+            updateDisplayedName(localPlayer);
+            playerFlagImg.src = getFlagURL(player.nationality);
+            playerFlagImg.alt = `Bandera de ${player.nationality}`;
+            playerCountryElement.textContent = player.nationality;
+            playerPositionElement.textContent = player.position;
             currentBidTextElement.textContent = numberFormatter.format(currentBid);
+            
+            const highestBidder = players.find(p => p.id === highestBidderId);
             highestBidderTextElement.textContent = highestBidder ? `Postor más alto: ${highestBidder.name}` : 'Nadie ha pujado aún';
             
             // Renderiza los botones de puja
             bidButtonsContainer.innerHTML = '';
-            players.forEach((player, index) => {
-                const bidAmount = currentBid + BID_INCREMENT; // Siempre incrementa desde el valor actual
+            players.forEach(p => {
+                if (p.id !== userId) return; // Solo renderizar botón para el usuario local
+                const bidAmount = currentBid + BID_INCREMENT;
                 const button = document.createElement('button');
                 button.textContent = `Pujar ${numberFormatter.format(bidAmount)}`;
                 button.className = "w-full p-3 rounded-lg bg-green-600 hover:bg-green-700 text-white font-bold transition duration-300 ease-in-out transform hover:scale-105 shadow-md focus:outline-none focus:ring-2 focus:ring-green-500";
                 
-                if (player.budget < bidAmount) {
+                if (p.budget < bidAmount) {
                     button.disabled = true;
                     button.textContent = `Sin fondos suficientes`;
                     button.className = "w-full p-3 rounded-lg bg-gray-600 text-gray-400 cursor-not-allowed";
-                } else if (highestBidder && highestBidder.name === player.name) {
+                } else if (highestBidderId === userId) {
                     button.disabled = true;
                     button.textContent = `Ya eres el postor más alto`;
                     button.className = "w-full p-3 rounded-lg bg-gray-600 text-gray-400 cursor-not-allowed";
-                }
-                else {
-                    button.addEventListener('click', () => handleBid(index, bidAmount));
+                } else {
+                    button.addEventListener('click', () => handleBid(bidAmount));
                 }
                 bidButtonsContainer.appendChild(button);
             });
-
+            
             // Lógica del botón de pista
             hintBtn.classList.remove('hidden');
             if (hintsUsed >= 2) {
@@ -374,20 +526,21 @@
                 hintBtn.disabled = false;
                 hintBtn.classList.remove('cursor-not-allowed', 'opacity-50');
             }
-
+            hintBtn.onclick = handleHint;
+            
             // Renderiza los inventarios de los jugadores
             playerInventoriesContainer.innerHTML = '';
-            players.forEach(player => {
+            players.forEach(p => {
                 const playerDiv = document.createElement('div');
                 playerDiv.className = "mb-4 p-4 rounded-lg bg-gray-700 shadow-inner text-left";
-                playerDiv.innerHTML = `<h4 class="font-bold text-lg text-blue-300">${player.name}:</h4><p class="text-sm font-light text-gray-400">Presupuesto restante: <span class="text-white font-semibold">${numberFormatter.format(player.budget)}</span></p>`;
+                playerDiv.innerHTML = `<h4 class="font-bold text-lg text-blue-300">${p.name}:</h4><p class="text-sm font-light text-gray-400">Presupuesto restante: <span class="text-white font-semibold">${numberFormatter.format(p.budget)}</span></p>`;
                 
                 const itemList = document.createElement('ul');
                 itemList.className = "mt-2 space-y-1 list-disc list-inside text-gray-300";
-                if (player.items.length === 0) {
+                if (p.items.length === 0) {
                     itemList.innerHTML = `<li>Aún no ha seleccionado jugadores.</li>`;
                 } else {
-                    player.items.forEach(item => {
+                    p.items.forEach(item => {
                         const li = document.createElement('li');
                         li.textContent = item.name;
                         itemList.appendChild(li);
@@ -397,192 +550,286 @@
                 playerInventoriesContainer.appendChild(playerDiv);
             });
         }
-        
-        function startCountdown() {
-            timer = 30;
-            const timerElement = document.getElementById('auction-timer');
-            if (timerInterval) clearInterval(timerInterval);
-            timerInterval = setInterval(() => {
-                timer--;
-                timerElement.textContent = `Tiempo restante: ${timer}s`;
-                if (timer <= 0) {
-                    clearInterval(timerInterval);
-                    endAuction();
-                }
-            }, 1000);
-        }
 
-        function startNextAuction() {
-            if (auctionQueue.length === 0) {
-                showMessage("¡Fin del Draft!", 'success');
-                currentAuctionPlayer = null;
-                renderAuctionScreen();
-                return;
-            }
-            
-            // Restablece las variables de pista para el nuevo jugador
-            hintsUsed = 0;
-            revealedFirstNameLength = 0;
-            revealedLastNameLength = 0;
-            const nameParts = auctionQueue[0].name.split(' ');
-            revealedFirstNameLength = 1;
-            if (nameParts.length > 1) {
-                revealedLastNameLength = 1;
-            }
-
-            currentAuctionPlayer = auctionQueue.shift();
-            currentBid = currentAuctionPlayer.value;
-            highestBidder = null;
-            renderAuctionScreen();
-            startCountdown();
-        }
-
-        function endAuction() {
-            if (highestBidder) {
-                highestBidder.items.push(currentAuctionPlayer);
-                highestBidder.budget -= currentBid;
-                showMessage(`${highestBidder.name} ha ganado la subasta por ${currentAuctionPlayer.name} por ${numberFormatter.format(currentBid)}.`, 'success');
-            } else {
-                auctionQueue.push(currentAuctionPlayer);
-                shuffle(auctionQueue); // Vuelve a barajar el jugador
-                showMessage(`Nadie pujó por ${currentAuctionPlayer.name}. Regresa al fondo común.`, 'info');
-            }
-            startNextAuction();
-        }
-
-        function handleBid(playerIndex, amount) {
-            const bidder = players[playerIndex];
-            
-            // Check if player can afford the bid
-            if (bidder.budget >= amount) {
-                currentBid = amount;
-                highestBidder = bidder;
-                showMessage(`${bidder.name} ha pujado ${numberFormatter.format(amount)}.`, 'info');
-                // Reinicia el contador
-                clearInterval(timerInterval);
-                timer = 30;
-                startCountdown();
-            } else {
-                showMessage(`¡${bidder.name}, no tienes suficiente presupuesto para esta puja!`, 'error');
-            }
-            renderAuctionScreen();
-        }
-
-        // Lógica para el botón de pista
-        function handleHint() {
-            if (hintsUsed < 2) {
-                hintsUsed++;
-                currentBid += BID_HINT_INCREMENT;
+        async function handleBid(bidAmount) {
+            try {
+                const gameRef = doc(db, 'artifacts', appId, 'public', 'data', 'games', gameId);
+                const gameDoc = await getDoc(gameRef);
+                const gameState = gameDoc.data();
                 
-                const nameParts = currentAuctionPlayer.name.split(' ');
+                const myPlayer = gameState.players.find(p => p.id === userId);
+                if (!myPlayer) return;
                 
-                // Revela una letra del primer nombre
-                if (revealedFirstNameLength < nameParts[0].length) {
-                    revealedFirstNameLength++;
+                if (myPlayer.budget < bidAmount) {
+                     showMessage("¡No tienes suficiente presupuesto!", 'error');
+                     return;
                 }
                 
-                // Revela una letra del último nombre
-                if (nameParts.length > 1 && revealedLastNameLength < nameParts[nameParts.length - 1].length) {
-                    revealedLastNameLength++;
-                }
-
-                showMessage(`Pista usada. El valor del jugador aumenta a ${numberFormatter.format(currentBid)}.`, 'info');
-                
-                // Reinicia el temporizador
-                clearInterval(timerInterval);
-                timer = 30;
-                startCountdown();
-                
-                // Llama a renderAuctionScreen para actualizar el precio del botón de puja
-                renderAuctionScreen();
+                const now = Date.now();
+                await updateDoc(gameRef, {
+                    currentBid: bidAmount,
+                    highestBidderId: userId,
+                    auctionEndTime: now + 30000, // Reinicia el temporizador
+                });
+            } catch (e) {
+                 showMessage(`Error al realizar la puja: ${e.message}`, 'error');
             }
         }
         
-        // Obtiene las secciones y botones
-        const playerSelectSection = document.getElementById('player-select-section');
-        const playerNamesSection = document.getElementById('player-names-section');
-        const auctionSection = document.getElementById('auction-section');
-        const numPlayersSelect = document.getElementById('num-players');
-        const startDraftBtn = document.getElementById('start-draft-btn');
-        const confirmNamesBtn = document.getElementById('confirm-names-btn');
-        const backBtnGlobal = document.getElementById('back-btn-global');
-        const playerNameInputsContainer = document.getElementById('player-name-inputs');
-        const hintBtn = document.getElementById('hint-btn');
+        async function handleHint() {
+            try {
+                const gameRef = doc(db, 'artifacts', appId, 'public', 'data', 'games', gameId);
+                const gameDoc = await getDoc(gameRef);
+                const gameState = gameDoc.data();
+                if (gameState.hintsUsed >= 2) {
+                    showMessage("Ya usaste tus dos pistas.", 'error');
+                    return;
+                }
+                
+                const nameParts = gameState.currentAuctionPlayer.name.split(' ');
+                let newRevealedFirstNameLength = gameState.revealedFirstNameLength;
+                let newRevealedLastNameLength = gameState.revealedLastNameLength;
 
-        // Evento para empezar el draft y mostrar campos de nombres
-        startDraftBtn.addEventListener('click', () => {
-            const numPlayers = parseInt(numPlayersSelect.value);
-            playerSelectSection.classList.add('hidden');
-            playerNamesSection.classList.remove('hidden');
-            backBtnGlobal.classList.remove('hidden');
-            
-            playerNameInputsContainer.innerHTML = '';
-            
-            for (let i = 1; i <= numPlayers; i++) {
-                const div = document.createElement('div');
-                div.innerHTML = `
-                    <label for="player-${i}" class="block text-left text-sm font-semibold mb-1">
-                        Nombre del Jugador ${i}:
-                    </label>
-                    <input type="text" id="player-${i}" placeholder="Escribe el nombre aquí" 
-                        class="w-full p-3 rounded-lg bg-gray-700 border border-gray-600 text-white focus:outline-none focus:border-blue-500" required />
-                `;
-                playerNameInputsContainer.appendChild(div);
-            }
-            
-            document.getElementById('message-container').classList.add('hidden');
-        });
-
-        // Evento para confirmar los nombres y empezar la subasta
-        confirmNamesBtn.addEventListener('click', () => {
-            const numPlayers = parseInt(numPlayersSelect.value);
-            const playerNames = [];
-            let allNamesEntered = true;
-
-            for (let i = 1; i <= numPlayers; i++) {
-                const input = document.getElementById(`player-${i}`);
-                if (input && input.value.trim() !== '') {
-                    playerNames.push(input.value.trim());
+                if (newRevealedFirstNameLength < nameParts[0].length) {
+                    newRevealedFirstNameLength++;
+                } else if (nameParts.length > 1 && newRevealedLastNameLength < nameParts.slice(1).join(' ').length) {
+                    newRevealedLastNameLength++;
                 } else {
-                    allNamesEntered = false;
-                    break;
+                    showMessage("Ya no hay más pistas disponibles para este jugador.", 'info');
+                    return;
                 }
-            }
 
-            if (allNamesEntered) {
-                players = playerNames.map(name => ({ name, items: [], budget: INITIAL_BUDGET }));
-                
-                // Transiciona a la pantalla de subasta
-                playerNamesSection.classList.add('hidden');
-                auctionSection.classList.remove('hidden');
-                document.getElementById('message-container').classList.add('hidden');
-                
-                auctionQueue = [...itemPool];
-                shuffle(auctionQueue);
-                
-                startNextAuction();
-            } else {
-                showMessage('Por favor, ingresa el nombre de todos los jugadores.', 'error');
-            }
-        });
+                await updateDoc(gameRef, {
+                    currentBid: gameState.currentBid + BID_HINT_INCREMENT,
+                    hintsUsed: gameState.hintsUsed + 1,
+                    revealedFirstNameLength: newRevealedFirstNameLength,
+                    revealedLastNameLength: newRevealedLastNameLength,
+                });
 
-        // Evento para el botón global de volver
-        backBtnGlobal.addEventListener('click', () => {
-            if (!auctionSection.classList.contains('hidden')) {
-                auctionSection.classList.add('hidden');
-                playerNamesSection.classList.remove('hidden');
-                clearInterval(timerInterval); // Detiene el temporizador
-            } 
-            else if (!playerNamesSection.classList.contains('hidden')) {
-                playerNamesSection.classList.add('hidden');
-                playerSelectSection.classList.remove('hidden');
-                backBtnGlobal.classList.add('hidden');
+            } catch (e) {
+                 showMessage(`Error al pedir una pista: ${e.message}`, 'error');
             }
-            document.getElementById('message-container').classList.add('hidden');
-        });
+        }
 
-        // Evento del botón de pista
-        hintBtn.addEventListener('click', handleHint);
+        async function endAuction(gameState) {
+             const gameRef = doc(db, 'artifacts', appId, 'public', 'data', 'games', gameId);
+             
+             const { currentAuctionPlayer, currentBid, highestBidderId, auctionQueue, players } = gameState;
+             const parsedAuctionQueue = JSON.parse(auctionQueue);
+             
+             if (highestBidderId) {
+                 const winningPlayer = players.find(p => p.id === highestBidderId);
+                 if (winningPlayer) {
+                      const updatedPlayers = players.map(p => {
+                          if (p.id === highestBidderId) {
+                              return { ...p, budget: p.budget - currentBid, items: [...p.items, currentAuctionPlayer] };
+                          }
+                          return p;
+                      });
+                      
+                      const nextPlayer = parsedAuctionQueue.shift() || null;
+                      const now = Date.now();
+                      const nextAuctionEndTime = nextPlayer ? now + 30000 : 0;
+                      
+                      const nextAuctionPlayer = nextPlayer ? {
+                         name: nextPlayer.name,
+                         nationality: nextPlayer.nationality,
+                         position: nextPlayer.position
+                      } : null;
+                      
+                      const newRevealedFirstNameLength = nextPlayer ? 1 : 0;
+                      const newRevealedLastNameLength = nextPlayer && nextPlayer.name.split(' ').length > 1 ? 1 : 0;
+
+                      await updateDoc(gameRef, {
+                          players: updatedPlayers,
+                          currentAuctionPlayer: nextAuctionPlayer,
+                          currentBid: nextPlayer ? nextPlayer.value : 0,
+                          highestBidderId: null,
+                          auctionEndTime: nextAuctionEndTime,
+                          revealedFirstNameLength: newRevealedFirstNameLength,
+                          revealedLastNameLength: newRevealedLastNameLength,
+                          hintsUsed: 0,
+                          auctionQueue: JSON.stringify(parsedAuctionQueue),
+                          status: nextPlayer ? 'in_progress' : 'finished'
+                      });
+                 }
+             } else {
+                 const nextPlayer = parsedAuctionQueue.shift() || null;
+                 const now = Date.now();
+                 const nextAuctionEndTime = nextPlayer ? now + 30000 : 0;
+                 
+                 const nextAuctionPlayer = nextPlayer ? {
+                    name: nextPlayer.name,
+                    nationality: nextPlayer.nationality,
+                    position: nextPlayer.position
+                 } : null;
+                 
+                 const newRevealedFirstNameLength = nextPlayer ? 1 : 0;
+                 const newRevealedLastNameLength = nextPlayer && nextPlayer.name.split(' ').length > 1 ? 1 : 0;
+
+                 await updateDoc(gameRef, {
+                     currentAuctionPlayer: nextAuctionPlayer,
+                     currentBid: nextPlayer ? nextPlayer.value : 0,
+                     highestBidderId: null,
+                     auctionEndTime: nextAuctionEndTime,
+                     revealedFirstNameLength: newRevealedFirstNameLength,
+                     revealedLastNameLength: newRevealedLastNameLength,
+                     hintsUsed: 0,
+                     auctionQueue: JSON.stringify(parsedAuctionQueue),
+                     status: nextPlayer ? 'in_progress' : 'finished'
+                 });
+             }
+        }
+
+        function backToLobby() {
+            gameId = null;
+            isHost = false;
+            lobbySection.classList.remove('hidden');
+            playerSelectSection.classList.add('hidden');
+            playerNamesSection.classList.add('hidden');
+            auctionSection.classList.add('hidden');
+            backBtn.classList.add('hidden');
+            document.getElementById('join-game-id-input').value = '';
+        }
+
+        createGameBtn.addEventListener('click', createGame);
+        joinGameBtn.addEventListener('click', joinGame);
+        confirmNamesBtn.addEventListener('click', confirmPlayerNames);
+        startGameBtn.addEventListener('click', startDraft);
+        backBtn.addEventListener('click', backToLobby);
     </script>
+    <style>
+        body {
+            background-color: #1a202c; /* Fondo oscuro */
+            color: #e2e8f0; /* Color de texto claro */
+            font-family: 'Inter', sans-serif;
+        }
+        .flag-icon {
+            width: 48px; /* Tamaño de bandera más pequeño */
+            height: auto; /* Mantiene la proporción */
+            border-radius: 6px;
+        }
+    </style>
+</head>
+<body class="flex flex-col items-center justify-center min-h-screen p-4">
+    <button
+        id="back-btn-global"
+        class="fixed top-4 left-4 p-3 bg-gray-600 hover:bg-gray-700 text-white font-bold rounded-full transition duration-300 ease-in-out transform hover:scale-110 shadow-lg focus:outline-none focus:ring-4 focus:ring-gray-500 focus:ring-opacity-50 hidden"
+        aria-label="Volver a la pantalla anterior"
+    >
+        <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7" />
+        </svg>
+    </button>
+    <p id="user-id-display" class="fixed top-4 right-4 text-xs text-gray-500"></p>
+
+    <div class="bg-gray-800 p-8 rounded-2xl shadow-2xl max-w-lg w-full text-center">
+        <h1 class="text-4xl font-extrabold mb-6 text-transparent bg-clip-text bg-gradient-to-r from-purple-400 to-pink-600">
+            Draft de Subasta FC 24
+        </h1>
+
+        <!-- Sección de Lobby, inicialmente visible -->
+        <div id="lobby-section" class="space-y-6">
+            <h2 class="text-2xl font-bold">Inicia una partida o únete a una existente</h2>
+            <div class="space-y-4">
+                <p class="text-gray-400">Crear una nueva partida:</p>
+                <div class="flex flex-col space-y-4">
+                    <label for="num-players" class="block text-sm font-semibold mb-2">
+                        Selecciona la cantidad de jugadores:
+                    </label>
+                    <select id="num-players" class="w-full p-3 rounded-lg bg-gray-700 border border-gray-600 text-white focus:outline-none focus:border-blue-500 transition duration-200">
+                        <option value="2">2</option>
+                        <option value="3">3</option>
+                        <option value="4">4</option>
+                        <option value="5">5</option>
+                        <option value="6">6</option>
+                        <option value="7">7</option>
+                        <option value="8">8</option>
+                    </select>
+                    <button
+                        id="create-game-btn"
+                        class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-6 rounded-xl transition duration-300 ease-in-out transform hover:scale-105 shadow-lg focus:outline-none focus:ring-4 focus:ring-blue-500 focus:ring-opacity-50"
+                    >
+                        Crear Partida
+                    </button>
+                </div>
+            </div>
+            <hr class="border-gray-700 my-4">
+            <div class="space-y-4">
+                <p class="text-gray-400">Unirse a una partida:</p>
+                <input
+                    id="join-game-id-input"
+                    type="text"
+                    placeholder="Introduce el ID de la partida"
+                    class="w-full p-3 rounded-lg bg-gray-700 border border-gray-600 text-white focus:outline-none focus:border-blue-500 transition duration-200"
+                />
+                <button
+                    id="join-game-btn"
+                    class="w-full bg-purple-600 hover:bg-purple-700 text-white font-bold py-3 px-6 rounded-xl transition duration-300 ease-in-out transform hover:scale-105 shadow-lg focus:outline-none focus:ring-4 focus:ring-purple-500 focus:ring-opacity-50"
+                >
+                    Unirse a Partida
+                </button>
+            </div>
+        </div>
+
+        <!-- Sección de ingreso de nombres, inicialmente oculta -->
+        <div id="player-names-section" class="hidden">
+            <h2 class="text-2xl font-bold mb-4">Ingresa tu Nombre</h2>
+            <p id="room-id-display" class="text-sm font-semibold mb-4 text-gray-400"></p>
+            <div id="player-name-inputs" class="space-y-4">
+                <!-- Aquí se generarán los campos de texto para todos los jugadores -->
+            </div>
+            <button
+                id="confirm-names-btn"
+                class="w-full mt-6 bg-green-600 hover:bg-green-700 text-white font-bold py-3 px-6 rounded-xl transition duration-300 ease-in-out transform hover:scale-105 shadow-lg focus:outline-none focus:ring-4 focus:ring-green-500 focus:ring-opacity-50"
+            >
+                Confirmar Nombre
+            </button>
+            <button
+                id="start-draft-btn"
+                class="w-full mt-4 bg-yellow-600 hover:bg-yellow-700 text-white font-bold py-3 px-6 rounded-xl transition duration-300 ease-in-out transform hover:scale-105 shadow-lg focus:outline-none focus:ring-4 focus:ring-yellow-500 focus:ring-opacity-50 hidden"
+            >
+                Empezar Subasta
+            </button>
+        </div>
+
+        <!-- Sección de Subasta, inicialmente oculta -->
+        <div id="auction-section" class="hidden text-center">
+            <div id="auction-container" class="mb-6">
+                <h2 id="auction-timer" class="text-4xl font-extrabold text-white mb-4"></h2>
+                <div id="player-info" class="p-6 rounded-xl bg-gray-700 shadow-lg">
+                    <p id="player-name" class="text-3xl font-extrabold mb-4"></p>
+                    <div id="player-nationality" class="mb-4 flex flex-col items-center">
+                        <img id="flag-img" src="" alt="Bandera del país del jugador" class="flag-icon mb-2">
+                        <p id="player-country" class="text-xl font-bold"></p>
+                    </div>
+                    <p id="player-position" class="text-xl font-bold mb-2"></p>
+                    <p id="current-bid-text" class="text-2xl font-semibold text-green-400"></p>
+                    <p id="highest-bidder-text" class="text-sm text-gray-400 mt-2"></p>
+                </div>
+            </div>
+            <div id="bid-buttons" class="space-y-4 mb-6">
+            </div>
+            <button
+                id="hint-btn"
+                class="w-full bg-yellow-500 hover:bg-yellow-600 text-gray-900 font-bold py-3 px-6 rounded-xl transition duration-300 ease-in-out transform hover:scale-105 shadow-lg focus:outline-none focus:ring-4 focus:ring-yellow-400 focus:ring-opacity-50 mb-6"
+            >
+                <span class="flex items-center justify-center">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.663 17h4.674M12 3v12.5M12 18h.01M16.5 10c0-2.828-2.172-5-5-5s-5 2.172-5 5c0 1.25.45 2.45 1.28 3.33L10 16.5V21h4v-4.5L15.22 13.33C15.54 12.9 16.5 11.5 16.5 10z"/>
+                    </svg>
+                    Pista
+                </span>
+            </button>
+            <div id="player-inventories">
+                <h3 class="text-lg font-semibold mb-2">Plantillas de los Jugadores:</h3>
+            </div>
+        </div>
+
+        <div id="message-container" class="mt-6 p-4 rounded-lg text-sm transition-all duration-300 ease-in-out hidden">
+            <p id="message-text" class="font-semibold"></p>
+        </div>
+    </div>
 </body>
 </html>
+
