@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Simulador de Draft Colaborativo</title>
+    <title>Simulador de Draft de Jugadores</title>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
@@ -14,19 +14,12 @@
 <body class="bg-gray-800 font-sans leading-normal tracking-normal text-white">
     <div class="container mx-auto p-4 md:p-8">
         <header class="text-center mb-8">
-            <h1 class="text-4xl font-extrabold text-white mb-2">Simulador de Draft Colaborativo</h1>
-            <p class="text-gray-400">Únete a otros para competir en un draft en tiempo real.</p>
+            <h1 class="text-4xl font-extrabold text-white mb-2">Simulador de Draft de Jugadores</h1>
+            <p class="text-gray-400">Crea equipos y compite en un draft misterioso en tiempo real.</p>
         </header>
 
-        <!-- Mensajes del sistema -->
-        <div id="message-box" class="hidden text-center p-4 rounded-lg mt-4 text-white"></div>
+        <div id="message-box" class="hidden text-center"></div>
         
-        <!-- Estado de la conexión -->
-        <div id="connection-status" class="flex justify-center items-center text-sm font-medium mb-4">
-            <i class="fas fa-sync fa-spin mr-2 text-blue-400"></i>
-            <span id="user-id-display" class="text-gray-400">Conectando...</span>
-        </div>
-
         <!-- Controles para crear equipos -->
         <div class="bg-gray-900 rounded-lg shadow-xl p-6 border border-gray-700 mb-8">
             <h2 class="text-xl font-bold text-white mb-4">Crea tu equipo</h2>
@@ -51,10 +44,10 @@
             <div id="timer-display" class="text-5xl font-extrabold text-red-400 mb-4"></div>
             <div class="flex flex-col md:flex-row justify-center items-center md:space-x-8 space-y-4 md:space-y-0">
                 <div id="auction-player-card" class="bg-gray-900 p-6 rounded-lg shadow-md w-full max-w-sm">
-                    <!-- La información del jugador se renderizará aquí -->
+                    <!-- Player info will be rendered here -->
                 </div>
                 <div id="bid-info" class="bg-gray-900 p-6 rounded-lg shadow-md w-full max-w-sm">
-                    <!-- La información de la puja se renderizará aquí -->
+                    <!-- Bid info will be rendered here -->
                 </div>
             </div>
             
@@ -83,26 +76,11 @@
         <div class="bg-gray-900 rounded-lg shadow-xl p-6 border border-gray-700">
             <h2 class="text-2xl font-bold text-white mb-4">Equipos y Jugadores</h2>
             <div id="teams-list-container" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                <!-- Las tarjetas de los equipos se renderizarán aquí -->
+                <!-- Team cards will be rendered here -->
             </div>
         </div>
     </div>
-    
-    <!-- Firebase SDKs -->
-    <script type="module">
-        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
-        import { getAuth, signInAnonymously, onAuthStateChanged, signInWithCustomToken } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-        import { getFirestore, doc, getDoc, setDoc, onSnapshot } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
-        import { setLogLevel } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
-
-        // Establece el nivel de registro para depuración
-        setLogLevel('debug');
-
-        // Variables globales proporcionadas por el entorno
-        const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
-        const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : {};
-        const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
-        
+    <script>
         // Data de los jugadores
         const playersData = [
             // Defensas (30)
@@ -219,6 +197,19 @@
             { name: 'Wojciech', lastName: 'Szczesny', position: 'POR', nationality: 'POL', value: 15000000 }
         ];
 
+        // Estado global de la aplicación
+        let teams = [];
+        let playersPool = [...playersData];
+        let currentAuction = {
+            player: null,
+            currentBid: 0,
+            currentBidderId: null,
+            timer: 30,
+            interval: null
+        };
+        let hintsUsed = 0;
+        let lettersToShow = 1;
+
         // UI elements
         const teamForm = document.getElementById('add-team-form');
         const teamNameInput = document.getElementById('new-team-name');
@@ -232,159 +223,89 @@
         const hintBtn = document.getElementById('hint-btn');
         const hintsLeftSpan = document.getElementById('hints-left');
         const initialBidBtn = document.getElementById('bid-initial-btn');
-        const userIdDisplay = document.getElementById('user-id-display');
 
-        // Firebase Initialization
-        let auth, db, userId, unsubscribeSnapshot;
-        let timerInterval;
-        const stateDocPath = `artifacts/${appId}/public/data/draft_game/game_state`;
-
-        window.onload = async () => {
-            try {
-                const app = initializeApp(firebaseConfig);
-                auth = getAuth(app);
-                db = getFirestore(app);
-
-                // Autenticación anónima para permitir la colaboración sin registro
-                onAuthStateChanged(auth, async (user) => {
-                    if (user) {
-                        userId = user.uid;
-                        userIdDisplay.textContent = `ID de usuario: ${userId}`;
-                        console.log("Authenticated with user ID:", userId);
-
-                        // Se suscribe a los cambios del estado del juego en Firestore
-                        unsubscribeSnapshot = onSnapshot(doc(db, stateDocPath), (docSnapshot) => {
-                            if (docSnapshot.exists()) {
-                                const gameState = docSnapshot.data();
-                                updateUI(gameState);
-                            } else {
-                                console.log("Game state document does not exist, creating a new one.");
-                                createInitialState();
-                            }
-                        });
-                    } else {
-                        console.log("No user signed in. Signing in anonymously...");
-                        await (initialAuthToken ? signInWithCustomToken(auth, initialAuthToken) : signInAnonymously(auth));
-                    }
-                });
-            } catch (error) {
-                console.error("Firebase initialization or authentication failed:", error);
-                showMessage("Error de conexión. Inténtalo de nuevo más tarde.", 'error');
-            }
+        // Event Listeners
+        window.onload = () => {
+            shuffleArray(playersPool);
+            renderTeamsList();
         };
+        teamForm.addEventListener('submit', handleAddTeam);
+        startDraftBtn.addEventListener('click', startDraft);
+        bidButtons.addEventListener('click', handleBid);
+        hintBtn.addEventListener('click', handleHint);
 
-        // Funciones de actualización de Firestore
-        async function createInitialState() {
-            try {
-                shuffleArray(playersData);
-                const initialState = {
-                    teams: [],
-                    playersPool: playersData,
-                    currentAuction: {
-                        player: null,
-                        currentBid: 0,
-                        currentBidderId: null,
-                        timer: 30,
-                        auctionActive: false,
-                        hintsUsed: 0
-                    },
-                };
-                await setDoc(doc(db, stateDocPath), initialState);
-                console.log("Initial game state created.");
-            } catch (error) {
-                console.error("Error creating initial state:", error);
-                showMessage("Error al iniciar el juego. Inténtalo de nuevo.", 'error');
-            }
-        }
-
-        async function updateState(updates) {
-            try {
-                await setDoc(doc(db, stateDocPath), updates, { merge: true });
-            } catch (error) {
-                console.error("Error updating game state:", error);
-                showMessage("Error al actualizar el estado del juego.", 'error');
-            }
-        }
-
-        async function handleAddTeam(event) {
+        // Funciones principales
+        function handleAddTeam(event) {
             event.preventDefault();
             const teamName = teamNameInput.value.trim();
             if (!teamName) {
                 showMessage("Por favor, introduce un nombre para el equipo.", 'error');
                 return;
             }
-
-            const docRef = doc(db, stateDocPath);
-            const docSnap = await getDoc(docRef);
-            if (!docSnap.exists()) {
-                showMessage("El juego no está inicializado. Espera un momento y vuelve a intentarlo.", 'error');
+            if (teams.find(t => t.name.toLowerCase() === teamName.toLowerCase())) {
+                showMessage("Este nombre de equipo ya existe.", 'error');
                 return;
             }
-
-            const gameState = docSnap.data();
-            if (gameState.teams.find(t => t.id === userId)) {
-                showMessage("Ya tienes un equipo en este draft.", 'error');
-                return;
-            }
-
-            const newTeams = [...gameState.teams, {
-                id: userId,
+            const teamId = Date.now().toString(); // Simple unique ID
+            teams.push({
+                id: teamId,
                 name: teamName,
                 players: [],
                 budget: 1500000000,
-            }];
-
-            await updateState({ teams: newTeams });
+            });
             teamNameInput.value = '';
+            renderTeamsList();
+            checkDraftReadiness();
             showMessage(`Equipo "${teamName}" agregado con éxito.`);
         }
 
-        async function startDraft() {
-            const docRef = doc(db, stateDocPath);
-            const docSnap = await getDoc(docRef);
-            const gameState = docSnap.data();
-
-            if (gameState.teams.length < 1) {
+        function startDraft() {
+            if (teams.length < 1) {
                 showMessage("Debes crear al menos un equipo para iniciar el draft.", 'error');
                 return;
             }
-            if (gameState.currentAuction.auctionActive) {
-                showMessage("La subasta ya está en curso.", 'error');
+            startDraftBtn.classList.add('hidden');
+            auctionArea.classList.remove('hidden');
+            nextAuction();
+        }
+
+        function nextAuction() {
+            if (playersPool.length === 0 || teams.every(team => team.players.length >= 22)) {
+                showMessage("El draft ha terminado.", 'success');
+                auctionArea.classList.add('hidden');
                 return;
             }
+            // Reset hint state for the new auction
+            hintsUsed = 0;
+            lettersToShow = 1;
+            hintBtn.disabled = false;
+            hintsLeftSpan.textContent = 2;
 
-            const nextPlayer = gameState.playersPool.shift();
-            const updatedAuction = {
+            const nextPlayer = playersPool.shift();
+            currentAuction = {
                 player: nextPlayer,
                 currentBid: nextPlayer.value,
                 currentBidderId: null,
                 timer: 30,
-                auctionActive: true,
-                hintsUsed: 0
+                interval: null
             };
 
-            await updateState({
-                playersPool: gameState.playersPool,
-                currentAuction: updatedAuction
-            });
+            renderAuctionUI();
+            startTimer();
         }
 
-        async function handleBid(event) {
+        function handleBid(event) {
             const button = event.target.closest('button');
             if (!button || button.id === 'hint-btn') return;
-            
-            const docRef = doc(db, stateDocPath);
-            const docSnap = await getDoc(docRef);
-            const gameState = docSnap.data();
-            const currentAuction = gameState.currentAuction;
-            const teams = gameState.teams;
 
-            const biddingTeam = teams.find(t => t.id === userId);
+            const teamId = document.getElementById('team-select').value;
+            const biddingTeam = teams.find(t => t.id === teamId);
+
             if (!biddingTeam) {
-                showMessage("Debes unirte a un equipo para pujar.", 'error');
+                showMessage("Selecciona tu equipo para pujar.", 'error');
                 return;
             }
-
+            
             let newBid = 0;
             if (button.id === 'bid-initial-btn') {
                 newBid = currentAuction.player.value;
@@ -408,39 +329,45 @@
                 return;
             }
 
-            const updatedAuction = { ...currentAuction, currentBid: newBid, currentBidderId: userId, timer: 30 };
-            await updateState({ currentAuction: updatedAuction });
+            currentAuction.currentBid = newBid;
+            currentAuction.currentBidderId = biddingTeam.id;
+            renderAuctionUI();
             showMessage(`${biddingTeam.name} ha pujado ${formatCurrency(newBid)}.`, 'success');
         }
 
-        async function handleHint() {
-            const docRef = doc(db, stateDocPath);
-            const docSnap = await getDoc(docRef);
-            const gameState = docSnap.data();
-            let currentAuction = gameState.currentAuction;
-            
-            if (currentAuction.hintsUsed < 2) {
-                currentAuction.hintsUsed++;
-                
+        function handleHint() {
+            if (hintsUsed < 2) {
+                hintsUsed++;
+                lettersToShow += 2;
                 // Aumentar el valor del jugador en 5 millones al usar una pista
-                const updatedPlayer = { ...currentAuction.player, value: currentAuction.player.value + 5000000 };
-                // Actualizar la puja actual si es menor que el nuevo valor del jugador
-                if (currentAuction.currentBid < updatedPlayer.value) {
-                    currentAuction.currentBid = updatedPlayer.value;
+                currentAuction.player.value += 5000000;
+                // Actualizar la puja actual si la puja es menor que el nuevo valor del jugador
+                if (currentAuction.currentBid < currentAuction.player.value) {
+                    currentAuction.currentBid = currentAuction.player.value;
                 }
-                
-                await updateState({ currentAuction: { ...currentAuction, player: updatedPlayer } });
+                hintsLeftSpan.textContent = 2 - hintsUsed;
+                renderAuctionUI();
+            }
+            if (hintsUsed >= 2) {
+                hintBtn.disabled = true;
             }
         }
 
-        async function endAuction() {
-            const docRef = doc(db, stateDocPath);
-            const docSnap = await getDoc(docRef);
-            const gameState = docSnap.data();
-            const currentAuction = gameState.currentAuction;
-            const teams = gameState.teams;
-            const playersPool = gameState.playersPool;
-            
+        function startTimer() {
+            if (currentAuction.interval) clearInterval(currentAuction.interval);
+            const timerDisplay = document.getElementById('timer-display');
+            currentAuction.interval = setInterval(() => {
+                currentAuction.timer--;
+                timerDisplay.textContent = `${currentAuction.timer}s`;
+                if (currentAuction.timer <= 0) {
+                    clearInterval(currentAuction.interval);
+                    endAuction();
+                }
+            }, 1000);
+        }
+
+        function endAuction() {
+            clearInterval(currentAuction.interval);
             if (currentAuction.currentBidderId) {
                 const winningTeam = teams.find(t => t.id === currentAuction.currentBidderId);
                 winningTeam.budget -= currentAuction.currentBid;
@@ -451,51 +378,16 @@
                 playersPool.push(currentAuction.player);
                 shuffleArray(playersPool);
             }
+            renderTeamsList();
             
-            const nextPlayer = playersPool.length > 0 ? playersPool.shift() : null;
-            const updatedAuction = nextPlayer ? {
-                player: nextPlayer,
-                currentBid: nextPlayer.value,
-                currentBidderId: null,
-                timer: 30,
-                auctionActive: true,
-                hintsUsed: 0
-            } : { auctionActive: false };
-
-            await updateState({
-                teams: teams,
-                playersPool: playersPool,
-                currentAuction: updatedAuction
-            });
-        }
-
-        // Timer Logic
-        async function handleTimerUpdate() {
-            const docRef = doc(db, stateDocPath);
-            const docSnap = await getDoc(docRef);
-            const gameState = docSnap.data();
-            if (!gameState || !gameState.currentAuction.auctionActive) return;
-
-            const updatedTimer = gameState.currentAuction.timer - 1;
-            if (updatedTimer >= 0) {
-                await updateState({ currentAuction: { ...gameState.currentAuction, timer: updatedTimer } });
-            } else {
-                await endAuction();
-            }
-        }
-        
-        function startFirestoreTimer() {
-            if (timerInterval) clearInterval(timerInterval);
-            timerInterval = setInterval(handleTimerUpdate, 1000);
+            setTimeout(() => {
+                nextAuction();
+            }, 3000); // 3-second pause
         }
 
         // Funciones de renderizado
-        function updateUI(gameState) {
-            const { teams, playersPool, currentAuction } = gameState;
-
-            // Renderiza la lista de equipos y jugadores
+        function renderTeamsList() {
             const teamSelect = document.getElementById('team-select');
-            teamsListContainer.innerHTML = '';
             teamSelect.innerHTML = `<option value="">Selecciona tu equipo</option>`;
             teams.forEach(team => {
                 const option = document.createElement('option');
@@ -514,49 +406,37 @@
                 `;
                 teamsListContainer.appendChild(teamCard);
             });
+        }
 
-            // Renderiza la UI de la subasta
-            if (currentAuction.auctionActive) {
-                startDraftBtn.classList.add('hidden');
-                auctionArea.classList.remove('hidden');
-                
-                const player = currentAuction.player;
-                const lettersToShow = 1 + (currentAuction.hintsUsed * 2);
-                const displayedFirstName = player.name.substring(0, lettersToShow);
-                const displayedLastName = player.lastName.substring(0, lettersToShow);
-                const dots = '...';
+        function renderAuctionUI() {
+            const player = currentAuction.player;
+            const displayedFirstName = player.name.substring(0, lettersToShow);
+            const displayedLastName = player.lastName.substring(0, lettersToShow);
+            const dots = '...';
 
-                playerCard.innerHTML = `
-                    <div class="flex flex-col items-center">
-                        <div class="text-5xl font-bold text-white mb-2">
-                            ${displayedFirstName}${dots} ${displayedLastName}${dots}
-                        </div>
-                        <img src="${getFlagUrl(player.nationality)}" alt="${player.nationality} flag" class="w-16 h-12 rounded-md mb-2">
-                        <span class="text-gray-400 text-sm">${player.position}</span>
+            playerCard.innerHTML = `
+                <div class="flex flex-col items-center">
+                    <div class="text-5xl font-bold text-white mb-2">
+                        ${displayedFirstName}${dots} ${displayedLastName}${dots}
                     </div>
-                `;
-                const currentBidderName = currentAuction.currentBidderId ? teams.find(t => t.id === currentAuction.currentBidderId)?.name : 'Nadie ha pujado aún';
-                bidInfo.innerHTML = `
-                    <h4 class="text-2xl font-bold text-white text-center">Puja Actual</h4>
-                    <span class="text-4xl font-extrabold text-green-400">${formatCurrency(currentAuction.currentBid)}</span>
-                    <p class="text-gray-400">Líder: ${currentBidderName}</p>
-                `;
-                document.getElementById('timer-display').textContent = `${currentAuction.timer}s`;
-                initialBidBtn.textContent = `Pujar ${formatCurrency(currentAuction.player.value)}`;
-                hintsLeftSpan.textContent = 2 - currentAuction.hintsUsed;
-                if (currentAuction.hintsUsed >= 2) {
-                    hintBtn.disabled = true;
-                }
-                
-                if (!timerInterval) {
-                    startFirestoreTimer();
-                }
+                    <img src="${getFlagUrl(player.nationality)}" alt="${player.nationality} flag" class="w-16 h-12 rounded-md mb-2">
+                    <span class="text-gray-400 text-sm">${player.position}</span>
+                </div>
+            `;
+            const currentBidderName = currentAuction.currentBidderId ? teams.find(t => t.id === currentAuction.currentBidderId)?.name : 'Nadie ha pujado aún';
+            bidInfo.innerHTML = `
+                <h4 class="text-2xl font-bold text-white text-center">Puja Actual</h4>
+                <span class="text-4xl font-extrabold text-green-400">${formatCurrency(currentAuction.currentBid)}</span>
+                <p class="text-gray-400">Líder: ${currentBidderName}</p>
+            `;
+            initialBidBtn.textContent = `Pujar ${formatCurrency(currentAuction.player.value)}`;
+        }
 
+        function checkDraftReadiness() {
+            if (teams.length > 0) {
+                startDraftBtn.classList.remove('hidden');
             } else {
-                auctionArea.classList.add('hidden');
-                if (teams.length > 0) {
-                    startDraftBtn.classList.remove('hidden');
-                }
+                startDraftBtn.classList.add('hidden');
             }
         }
 
@@ -568,12 +448,6 @@
                 messageBox.classList.add('hidden');
             }, 5000);
         }
-
-        // Event Listeners
-        teamForm.addEventListener('submit', handleAddTeam);
-        startDraftBtn.addEventListener('click', startDraft);
-        bidButtons.addEventListener('click', handleBid);
-        hintBtn.addEventListener('click', handleHint);
 
         // Utilidades
         function formatCurrency(value) {
@@ -606,4 +480,3 @@
     </script>
 </body>
 </html>
-
