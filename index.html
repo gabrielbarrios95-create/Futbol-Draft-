@@ -3,833 +3,607 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Draft de Subasta FC 24 Multijugador</title>
-    <!-- Incluye Tailwind CSS desde CDN -->
+    <title>Simulador de Draft Colaborativo</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
     <script src="https://cdn.tailwindcss.com"></script>
-    <!-- Incluye Firebase -->
-    <script type="module">
-        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.3/firebase-app.js";
-        import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.3/firebase-auth.js";
-        import { getFirestore, doc, setDoc, getDoc, updateDoc, onSnapshot, collection, query, addDoc } from "https://www.gstatic.com/firebasejs/10.12.3/firebase-firestore.js";
-        
-        // Variables globales del entorno
-        const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
-        const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : {};
-        const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
-
-        // Inicializa Firebase
-        const app = initializeApp(firebaseConfig);
-        const auth = getAuth(app);
-        const db = getFirestore(app);
-        
-        let userId = null;
-        let gameId = null;
-        let isHost = false;
-
-        // Manejadores del DOM
-        const lobbySection = document.getElementById('lobby-section');
-        const playerSelectSection = document.getElementById('player-select-section');
-        const playerNamesSection = document.getElementById('player-names-section');
-        const auctionSection = document.getElementById('auction-section');
-        const backBtn = document.getElementById('back-btn-global');
-        const messageContainer = document.getElementById('message-container');
-        const messageText = document.getElementById('message-text');
-        const userIdDisplay = document.getElementById('user-id-display');
-
-        // Manejadores de botones
-        const createGameBtn = document.getElementById('create-game-btn');
-        const joinGameBtn = document.getElementById('join-game-btn');
-        const startGameBtn = document.getElementById('start-draft-btn');
-        const confirmNamesBtn = document.getElementById('confirm-names-btn');
-        const hintBtn = document.getElementById('hint-btn');
-        const numPlayersSelect = document.getElementById('num-players');
-
-        // Lógica de autenticación
-        onAuthStateChanged(auth, async (user) => {
-            if (user) {
-                userId = user.uid;
-                userIdDisplay.textContent = `Tu ID: ${userId}`;
-                lobbySection.classList.remove('hidden');
-                playerSelectSection.classList.add('hidden');
-                auctionSection.classList.add('hidden');
-            } else {
-                if (initialAuthToken) {
-                    await signInWithCustomToken(auth, initialAuthToken);
-                } else {
-                    await signInAnonymously(auth);
-                }
-            }
-        });
-
-        // Variables del juego
-        let currentAuctionPlayer = null;
-        let timerInterval = null;
-        const INITIAL_BUDGET = 1500000000;
-        const BID_INCREMENT = 5000000;
-        const BID_HINT_INCREMENT = 5000000;
-        let auctionQueue = [];
-
-        const itemPool = [
-            { name: 'Kylian Mbappé', value: 180000000, nationality: 'Francia', position: 'Delantero' }, { name: 'Erling Haaland', value: 180000000, nationality: 'Noruega', position: 'Delantero' },
-            { name: 'Vinícius Jr.', value: 150000000, nationality: 'Brasil', position: 'Delantero' }, { name: 'Jude Bellingham', value: 180000000, nationality: 'Inglaterra', position: 'Delantero' },
-            { name: 'Mohamed Salah', value: 65000000, nationality: 'Egipto', position: 'Delantero' }, { name: 'Robert Lewandowski', value: 40000000, nationality: 'Polonia', position: 'Delantero' },
-            { name: 'Harry Kane', value: 110000000, nationality: 'Inglaterra', position: 'Delantero' }, { name: 'Victor Osimhen', value: 110000000, nationality: 'Nigeria', position: 'Delantero' },
-            { name: 'Antoine Griezmann', value: 25000000, nationality: 'Francia', position: 'Delantero' }, { name: 'Heung-min Son', value: 50000000, nationality: 'Corea del Sur', position: 'Delantero' },
-            { name: 'Rafael Leão', value: 90000000, nationality: 'Portugal', position: 'Delantero' }, { name: 'Ousmane Dembélé', value: 60000000, nationality: 'Francia', position: 'Delantero' },
-            { name: 'Khvicha Kvaratskhelia', value: 85000000, nationality: 'Georgia', position: 'Delantero' }, { name: 'Federico Chiesa', value: 40000000, nationality: 'Italia', position: 'Delantero' },
-            { name: 'Phil Foden', value: 110000000, nationality: 'Inglaterra', position: 'Delantero' }, { name: 'Gabriel Martinelli', value: 80000000, nationality: 'Brasil', position: 'Delantero' },
-            { name: 'Marcus Rashford', value: 75000000, nationality: 'Inglaterro', position: 'Delantero' }, { name: 'Kingsley Coman', value: 65000000, nationality: 'Francia', position: 'Delantero' },
-            { name: 'Joao Félix', value: 40000000, nationality: 'Portugal', position: 'Delantero' }, { name: 'Lautaro Martínez', value: 110000000, nationality: 'Argentina', position: 'Delantero' },
-            { name: 'Dusan Vlahović', value: 60000000, nationality: 'Serbia', position: 'Delantero' }, { name: 'Luis Díaz', value: 75000000, nationality: 'Colombia', position: 'Delantero' },
-            { name: 'Neymar Jr.', value: 45000000, nationality: 'Brasil', position: 'Delantero' }, { name: 'Rodrygo', value: 100000000, nationality: 'Brasil', position: 'Delantero' },
-            { name: 'Julian Álvarez', value: 90000000, nationality: 'Argentina', position: 'Delantero' }, { name: 'Christopher Nkunku', value: 75000000, nationality: 'Francia', position: 'Delantero' },
-            { name: 'Victor Boniface', value: 40000000, nationality: 'Nigeria', position: 'Delantero' }, { name: 'Domenico Berardi', value: 20000000, nationality: 'Italia', position: 'Delantero' },
-            { name: 'Serge Gnabry', value: 45000000, nationality: 'Alemania', position: 'Delantero' }, { name: 'Lionel Messi', value: 35000000, nationality: 'Argentina', position: 'Delantero' },
-            { name: 'Kevin De Bruyne', value: 70000000, nationality: 'Bélgica', position: 'Mediocampista' }, { name: 'Rodri', value: 110000000, nationality: 'España', position: 'Mediocampista' },
-            { name: 'Bernardo Silva', value: 80000000, nationality: 'Portugal', position: 'Mediocampista' }, { name: 'Jamal Musiala', value: 110000000, nationality: 'Alemania', position: 'Mediocampista' },
-            { name: 'Frenkie De Jong', value: 75000000, nationality: 'Países Bajos', position: 'Mediocampista' }, { name: 'Bruno Fernandes', value: 70000000, nationality: 'Portugal', position: 'Mediocampista' },
-            { name: 'Pedri', value: 90000000, nationality: 'España', position: 'Mediocampista' }, { name: 'Federico Valverde', value: 100000000, nationality: 'Uruguay', position: 'Mediocampista' },
-            { name: 'Gavi', value: 90000000, nationality: 'España', position: 'Mediocampista' }, { name: 'Joshua Kimmich', value: 75000000, nationality: 'Alemania', position: 'Mediocampista' },
-            { name: 'Nicolò Barella', value: 75000000, nationality: 'Italia', position: 'Mediocampista' }, { name: 'Declan Rice', value: 110000000, nationality: 'Inglaterra', position: 'Mediocampista' },
-            { name: 'Martin Ødegaard', value: 95000000, nationality: 'Noruega', position: 'Mediocampista' }, { name: 'Alexis Mac Allister', value: 70000000, nationality: 'Argentina', position: 'Mediocampista' },
-            { name: 'Sandro Tonali', value: 50000000, nationality: 'Italia', position: 'Mediocampista' }, { name: 'Warren Zaïre-Emery', value: 60000000, nationality: 'Francia', position: 'Mediocampista' },
-            { name: 'Hakan Çalhanoğlu', value: 40000000, nationality: 'Turquía', position: 'Mediocampista' }, { name: 'Enzo Fernández', value: 80000000, nationality: 'Argentina', position: 'Mediocampista' },
-            { name: 'Florian Wirtz', value: 110000000, nationality: 'Alemania', position: 'Mediocampista' }, { name: 'Eduardo Camavinga', value: 90000000, nationality: 'Francia', position: 'Mediocampista' },
-            { name: 'Sergej Milinković-Savić', value: 50000000, nationality: 'Serbia', position: 'Mediocampista' }, { name: 'Marco Verratti', value: 35000000, nationality: 'Italia', position: 'Mediocampista' },
-            { name: 'Ilkay Gündoğan', value: 20000000, nationality: 'Alemania', position: 'Mediocampista' }, { name: 'Mateo Kovacic', value: 38000000, nationality: 'Croacia', position: 'Mediocampista' },
-            { name: 'Ismaël Bennacer', value: 40000000, nationality: 'Argelia', position: 'Mediocampista' }, { name: 'Sofyan Amrabat', value: 30000000, nationality: 'Marruecos', position: 'Mediocampista' },
-            { name: 'Manuel Locatelli', value: 30000000, nationality: 'Italia', position: 'Mediocampista' }, { name: 'Dani Olmo', value: 50000000, nationality: 'España', position: 'Mediocampista' },
-            { name: 'Harvey Elliott', value: 35000000, nationality: 'Inglaterra', position: 'Mediocampista' }, { name: 'Aurélien Tchouaméni', value: 90000000, nationality: 'Francia', position: 'Mediocampista' },
-            { name: 'Piotr Zieliński', value: 30000000, nationality: 'Polonia', position: 'Mediocampista' }, { name: 'Moussa Diaby', value: 55000000, nationality: 'Francia', position: 'Mediocampista' },
-            { name: 'Casemiro', value: 40000000, nationality: 'Brasil', position: 'Mediocampista' }, { name: 'Luka Modrić', value: 10000000, nationality: 'Croacia', position: 'Mediocampista' },
-            { name: 'Mason Mount', value: 45000000, nationality: 'Inglaterra', position: 'Mediocampista' }, { name: 'Thiago Alcântara', value: 15000000, nationality: 'España', position: 'Mediocampista' },
-            { name: 'Fabinho', value: 30000000, nationality: 'Brasil', position: 'Mediocampista' }, { name: 'Conor Gallagher', value: 40000000, nationality: 'Inglaterra', position: 'Mediocampista' },
-            { name: 'João Palhinha', value: 55000000, nationality: 'Portugal', position: 'Mediocampista' }, { name: 'James Maddison', value: 70000000, nationality: 'Inglaterra', position: 'Mediocampista' },
-            { name: 'Virgil van Dijk', value: 40000000, nationality: 'Países Bajos', position: 'Defensa' }, { name: 'Rúben Dias', value: 80000000, nationality: 'Portugal', position: 'Defensa' },
-            { name: 'Ronald Araujo', value: 70000000, nationality: 'Uruguay', position: 'Defensa' }, { name: 'Matthijs de Ligt', value: 65000000, nationality: 'Países Bajos', position: 'Defensa' },
-            { name: 'Éder Militão', value: 70000000, nationality: 'Brasil', position: 'Defensa' }, { name: 'Kyle Walker', value: 13000000, nationality: 'Inglaterra', position: 'Defensa' },
-            { name: 'João Cancelo', value: 40000000, nationality: 'Portugal', position: 'Defensa' }, { name: 'Theo Hernández', value: 60000000, nationality: 'Francia', position: 'Defensa' },
-            { name: 'Alphonso Davies', value: 70000000, nationality: 'Canadá', position: 'Defensa' }, { name: 'Joško Gvardiol', value: 75000000, nationality: 'Croacia', position: 'Defensa' },
-            { name: 'William Saliba', value: 80000000, nationality: 'Francia', position: 'Defensa' }, { name: 'Raphaël Varane', value: 20000000, nationality: 'Francia', position: 'Defensa' },
-            { name: 'Lisandro Martínez', value: 45000000, nationality: 'Argentina', position: 'Defensa' }, { name: 'Milan Škriniar', value: 45000000, nationality: 'Eslovaquia', position: 'Defensa' },
-            { name: 'Alessandro Bastoni', value: 70000000, nationality: 'Italia', position: 'Defensa' }, { name: 'Dayot Upamecano', value: 60000000, nationality: 'Francia', position: 'Defensa' },
-            { name: 'Reece James', value: 50000000, nationality: 'Inglaterra', position: 'Defensa' }, { name: 'Trent Alexander-Arnold', value: 70000000, nationality: 'Inglaterra', position: 'Defensa' },
-            { name: 'Andrew Robertson', value: 35000000, nationality: 'Escocia', position: 'Defensa' }, { name: 'Benjamin Pavard', value: 35000000, nationality: 'Francia', position: 'Defensa' },
-            { name: 'Kim Min-jae', value: 60000000, nationality: 'Corea del Sur', position: 'Defensa' }, { name: 'Jules Koundé', value: 60000000, nationality: 'Francia', position: 'Defensa' },
-            { name: 'Lucas Hernández', value: 45000000, nationality: 'Francia', position: 'Defensa' }, { name: 'Antonio Rüdiger', value: 25000000, nationality: 'Alemania', position: 'Defensa' },
-            { name: 'Fikayo Tomori', value: 40000000, nationality: 'Inglaterra', position: 'Defensa' }, { name: 'Bremer', value: 40000000, nationality: 'Brasil', position: 'Defensa' },
-            { name: 'David Alaba', value: 40000000, nationality: 'Austria', position: 'Defensa' }, { name: 'Gabriel Magalhães', value: 65000000, nationality: 'Brasil', position: 'Defensa' },
-            { name: 'Marquinhos', value: 65000000, nationality: 'Brasil', position: 'Defensa' }, { name: 'Koulibaly', value: 25000000, nationality: 'Senegal', position: 'Defensa' },
-            { name: 'Thibaut Courtois', value: 45000000, nationality: 'Bélgica', position: 'Arquero' }, { name: 'Jan Oblak', value: 30000000, nationality: 'Eslovenia', position: 'Arquero' },
-            { name: 'Alisson Becker', value: 45000000, nationality: 'Brasil', position: 'Arquero' }, { name: 'Marc-André ter Stegen', value: 40000000, nationality: 'Alemania', position: 'Arquero' },
-            { name: 'Ederson', value: 45000000, nationality: 'Brasil', position: 'Arquero' }, { name: 'Mike Maignan', value: 40000000, nationality: 'Francia', position: 'Arquero' },
-            { name: 'Gianluigi Donnarumma', value: 45000000, nationality: 'Italia', position: 'Arquero' }, { name: 'André Onana', value: 35000000, nationality: 'Camerún', position: 'Arquero' },
-            { name: 'Wojciech Szczęsny', value: 15000000, nationality: 'Polonia', position: 'Arquero' }, { name: 'Aaron Ramsdale', value: 35000000, nationality: 'Inglaterra', position: 'Arquero' },
-            { name: 'David Raya', value: 35000000, nationality: 'España', position: 'Arquero' }, { name: 'Diogo Costa', value: 45000000, nationality: 'Portugal', position: 'Arquero' },
-            { name: 'Unai Simón', value: 25000000, nationality: 'España', position: 'Arquero' }, { name: 'Gregor Kobel', value: 40000000, nationality: 'Suiza', position: 'Arquero' },
-            { name: 'Péter Gulácsi', value: 5000000, nationality: 'Hungría', position: 'Arquero' }, { name: 'Kepa Arrizabalaga', value: 10000000, nationality: 'España', position: 'Arquero' },
-            { name: 'Nick Pope', value: 20000000, nationality: 'Inglaterra', position: 'Arquero' }, { name: 'Yassine Bounou', value: 12000000, nationality: 'Marruecos', position: 'Arquero' },
-            { name: 'Alphonse Areola', value: 8000000, nationality: 'Francia', position: 'Arquero' }, { name: 'Robert Sánchez', value: 25000000, nationality: 'España', position: 'Arquero' }
-        ];
-
-        // Lógica de UI
-        const numberFormatter = new Intl.NumberFormat('es-ES', {
-            style: 'currency',
-            currency: 'EUR',
-            minimumFractionDigits: 0,
-            maximumFractionDigits: 0
-        });
-
-        const flagUrls = {
-            'Francia': 'https://upload.wikimedia.org/wikipedia/commons/c/c3/Flag_of_France.svg',
-            'Noruega': 'https://upload.wikimedia.org/wikipedia/commons/d/d9/Flag_of_Norway.svg',
-            'Brasil': 'https://upload.wikimedia.org/wikipedia/commons/0/05/Flag_of_Brazil.svg',
-            'Inglaterra': 'https://upload.wikimedia.org/wikipedia/commons/b/be/Flag_of_England.svg',
-            'Egipto': 'https://upload.wikimedia.org/wikipedia/commons/f/fe/Flag_of_Egypt.svg',
-            'Polonia': 'https://upload.wikimedia.org/wikipedia/commons/1/12/Flag_of_Poland.svg',
-            'Nigeria': 'https://upload.wikimedia.org/wikipedia/commons/7/79/Flag_of_Nigeria.svg',
-            'Corea del Sur': 'https://upload.wikimedia.org/wikipedia/commons/0/09/Flag_of_South_Korea.svg',
-            'Portugal': 'https://upload.wikimedia.org/wikipedia/commons/5/5c/Flag_of_Portugal.svg',
-            'Georgia': 'https://upload.wikimedia.org/wikipedia/commons/0/0f/Flag_of_Georgia.svg',
-            'Colombia': 'https://upload.wikimedia.org/wikipedia/commons/2/21/Flag_of_Colombia.svg',
-            'Argentina': 'https://upload.wikimedia.org/wikipedia/commons/1/1a/Flag_of_Argentina.svg',
-            'Serbia': 'https://upload.wikimedia.org/wikipedia/commons/f/ff/Flag_of_Serbia.svg',
-            'Italia': 'https://upload.wikimedia.org/wikipedia/commons/0/03/Flag_of_Italy.svg',
-            'Países Bajos': 'https://upload.wikimedia.org/wikipedia/commons/2/20/Flag_of_the_Netherlands.svg',
-            'Bélgica': 'https://upload.wikimedia.org/wikipedia/commons/6/65/Flag_of_Belgium.svg',
-            'Uruguay': 'https://upload.wikimedia.org/wikipedia/commons/f/fe/Flag_of_Uruguay.svg',
-            'Croacia': 'https://upload.wikimedia.org/wikipedia/commons/1/1b/Flag_of_Croatia.svg',
-            'Alemania': 'https://upload.wikimedia.org/wikipedia/commons/b/ba/Flag_of_Germany.svg',
-            'Turquía': 'https://upload.wikimedia.org/wikipedia/commons/b/b3/Flag_of_Turkey.svg',
-            'Argelia': 'https://upload.wikimedia.org/wikipedia/commons/7/7b/Flag_of_Algeria.svg',
-            'Marruecos': 'https://upload.wikimedia.org/wikipedia/commons/2/2c/Flag_of_Morocco.svg',
-            'Canadá': 'https://upload.wikimedia.org/wikipedia/commons/d/d9/Flag_of_Canada_%28Pantone%29.svg',
-            'Eslovaquia': 'https://upload.wikimedia.org/wikipedia/commons/e/e6/Flag_of_Slovakia.svg',
-            'Escocia': 'https://upload.wikimedia.org/wikipedia/commons/1/10/Flag_of_Scotland.svg',
-            'Austria': 'https://upload.wikimedia.org/wikipedia/commons/4/41/Flag_of_Austria.svg',
-            'Eslovenia': 'https://upload.wikimedia.org/wikipedia/commons/f/f0/Flag_of_Slovenia.svg',
-            'Camerún': 'https://upload.wikimedia.org/wikipedia/commons/4/4f/Flag_of_Cameroon.svg',
-            'Suiza': 'https://upload.wikimedia.org/wikipedia/commons/f/f3/Flag_of_Switzerland.svg',
-            'Hungría': 'https://upload.wikimedia.org/wikipedia/commons/c/c1/Flag_of_Hungary.svg',
-            'Senegal': 'https://upload.wikimedia.org/wikipedia/commons/f/fd/Flag_of_Senegal.svg',
-            'España': 'https://upload.wikimedia.org/wikipedia/commons/9/9a/Flag_of_Spain.svg'
-        };
-
-        function getFlagURL(country) {
-            return flagUrls[country] || 'https://upload.wikimedia.org/wikipedia/commons/a/a2/Flag_of_None.svg';
-        }
-
-        function showMessage(text, type) {
-            let bgColor = '';
-            let textColor = '';
-            if (type === 'success') {
-                bgColor = 'bg-green-500';
-                textColor = 'text-green-100';
-            } else if (type === 'info') {
-                bgColor = 'bg-blue-500';
-                textColor = 'text-blue-100';
-            } else if (type === 'error') {
-                bgColor = 'bg-red-500';
-                textColor = 'text-red-100';
-            }
-            messageContainer.className = `mt-6 p-4 rounded-lg text-sm transition-all duration-300 ease-in-out ${bgColor} ${textColor}`;
-            messageText.innerHTML = text;
-            messageContainer.classList.remove('hidden');
-        }
-
-        function shuffle(array) {
-            for (let i = array.length - 1; i > 0; i--) {
-                const j = Math.floor(Math.random() * (i + 1));
-                [array[i], array[j]] = [array[j], array[i]];
-            }
-        }
-
-        function updateDisplayedName(player) {
-            if (!player) return;
-            const name = player.name;
-            const parts = name.split(' ');
-            let displayedName = '';
-            let revealedFirstNameLength = player.revealedFirstNameLength || 0;
-            let revealedLastNameLength = player.revealedLastNameLength || 0;
-
-            displayedName += parts[0].substring(0, revealedFirstNameLength);
-
-            if (parts.length > 1) {
-                displayedName += ' ';
-                const lastName = parts.slice(1).join(' ');
-                displayedName += lastName.substring(0, revealedLastNameLength);
-            }
-            const hiddenLength = name.length - displayedName.length;
-            const hiddenPart = '*'.repeat(Math.max(0, hiddenLength));
-            document.getElementById('player-name').textContent = displayedName + hiddenPart;
-        }
-
-        // Lógica de Firestore
-        async function createGame() {
-            if (!userId) {
-                showMessage('Error: No se pudo autenticar al usuario. Inténtalo de nuevo.', 'error');
-                return;
-            }
-            const newGameId = Math.random().toString(36).substring(2, 8).toUpperCase();
-            gameId = newGameId;
-            isHost = true;
-            const gameRef = doc(db, 'artifacts', appId, 'public', 'data', 'games', gameId);
-            const numPlayers = parseInt(numPlayersSelect.value, 10);
-            const initialGameState = {
-                players: [{ id: userId, name: '', budget: INITIAL_BUDGET, items: [], isHost: true }],
-                status: 'waiting',
-                numPlayers: numPlayers,
-                currentAuctionPlayer: null,
-                currentBid: 0,
-                highestBidderId: null,
-                revealedFirstNameLength: 0,
-                revealedLastNameLength: 0,
-                hintsUsed: 0,
-                auctionEndTime: 0,
-                auctionQueue: []
-            };
-            try {
-                await setDoc(gameRef, initialGameState);
-                showMessage(`Juego creado. ID: ${gameId}. ¡Comparte este ID para que se unan!`, 'success');
-                startListeningToGame(gameRef);
-            } catch (e) {
-                showMessage(`Error al crear el juego: ${e.message}`, 'error');
-            }
-        }
-
-        async function joinGame() {
-            const idInput = document.getElementById('join-game-id-input');
-            const idToJoin = idInput.value.trim().toUpperCase();
-            if (!idToJoin) {
-                showMessage('Por favor, ingresa un ID de juego válido.', 'error');
-                return;
-            }
-            gameId = idToJoin;
-            const gameRef = doc(db, 'artifacts', appId, 'public', 'data', 'games', gameId);
-            try {
-                const gameDoc = await getDoc(gameRef);
-                if (!gameDoc.exists()) {
-                    showMessage(`No se encontró un juego con el ID ${gameId}.`, 'error');
-                    return;
-                }
-                const gameState = gameDoc.data();
-                if (gameState.players.length >= gameState.numPlayers) {
-                    showMessage('El juego ya está lleno.', 'error');
-                    gameId = null;
-                    return;
-                }
-                if (gameState.players.find(p => p.id === userId)) {
-                     showMessage('Ya estás en este juego.', 'info');
-                     startListeningToGame(gameRef);
-                     return;
-                }
-                const newPlayer = { id: userId, name: '', budget: INITIAL_BUDGET, items: [] };
-                await updateDoc(gameRef, {
-                    players: [...gameState.players, newPlayer]
-                });
-                showMessage('¡Te uniste al juego! Esperando al host para empezar.', 'success');
-                startListeningToGame(gameRef);
-            } catch (e) {
-                showMessage(`Error al unirse al juego: ${e.message}`, 'error');
-            }
-        }
-        
-        function startListeningToGame(gameRef) {
-             onSnapshot(gameRef, (docSnapshot) => {
-                 if (docSnapshot.exists()) {
-                     const gameState = docSnapshot.data();
-                     updateUI(gameState);
-                 } else {
-                     showMessage('El juego ha sido eliminado.', 'error');
-                     backToLobby();
-                 }
-             }, (error) => {
-                 showMessage(`Error de conexión: ${error.message}`, 'error');
-             });
-        }
-
-        function updateUI(gameState) {
-            // Lógica para mostrar las pantallas correctas según el estado
-            if (gameState.status === 'waiting') {
-                lobbySection.classList.add('hidden');
-                playerSelectSection.classList.add('hidden');
-                auctionSection.classList.add('hidden');
-                playerNamesSection.classList.remove('hidden');
-                backBtn.classList.add('hidden');
-                // Renderizar inputs de nombres para todos los jugadores
-                renderPlayerNameInputs(gameState.players, isHost);
-                // Si ya ingresé mi nombre, lo muestro en el input
-                const myPlayer = gameState.players.find(p => p.id === userId);
-                if (myPlayer && myPlayer.name) {
-                    const myInput = document.getElementById(`player-name-${myPlayer.id}`);
-                    if (myInput) myInput.value = myPlayer.name;
-                }
-                // Habilitar/deshabilitar botón de inicio
-                if (isHost && gameState.players.every(p => p.name.length > 0)) {
-                    startGameBtn.classList.remove('hidden');
-                } else {
-                    startGameBtn.classList.add('hidden');
-                }
-            } else if (gameState.status === 'in_progress') {
-                playerNamesSection.classList.add('hidden');
-                auctionSection.classList.remove('hidden');
-                backBtn.classList.remove('hidden');
-                renderAuctionScreen(gameState);
-            } else if (gameState.status === 'finished') {
-                playerNamesSection.classList.add('hidden');
-                auctionSection.classList.remove('hidden');
-                backBtn.classList.remove('hidden');
-                renderAuctionScreen(gameState); // Esto mostrará el mensaje de fin de draft
-            }
-        }
-
-        async function renderPlayerNameInputs(players, isHost) {
-            const container = document.getElementById('player-name-inputs');
-            container.innerHTML = '';
-            players.forEach(player => {
-                const div = document.createElement('div');
-                div.className = "flex items-center space-x-2";
-                const input = document.createElement('input');
-                input.id = `player-name-${player.id}`;
-                input.type = "text";
-                input.placeholder = `Nombre del Jugador ${players.indexOf(player) + 1}`;
-                input.className = "w-full p-3 rounded-lg bg-gray-700 border border-gray-600 text-white focus:outline-none focus:border-blue-500 transition duration-200";
-                
-                // Si soy yo, el input es editable. Si no, es de solo lectura.
-                if (player.id !== userId) {
-                    input.disabled = true;
-                    input.value = player.name;
-                }
-                
-                const span = document.createElement('span');
-                span.textContent = `(${player.name || 'Esperando...'})`;
-                span.className = "text-sm text-gray-400";
-                
-                div.appendChild(input);
-                if (player.id !== userId) {
-                    div.appendChild(span);
-                }
-                
-                container.appendChild(div);
-            });
-             confirmNamesBtn.classList.remove('hidden');
-             // Si soy host, muestro el botón de iniciar
-             startGameBtn.classList.add('hidden');
-        }
-
-        async function confirmPlayerNames() {
-            const myInput = document.getElementById(`player-name-${userId}`);
-            const myName = myInput.value.trim();
-            if (!myName) {
-                showMessage('Por favor, ingresa tu nombre.', 'error');
-                return;
-            }
-            try {
-                const gameRef = doc(db, 'artifacts', appId, 'public', 'data', 'games', gameId);
-                const gameDoc = await getDoc(gameRef);
-                const gameState = gameDoc.data();
-                
-                const updatedPlayers = gameState.players.map(p => {
-                    if (p.id === userId) {
-                        return { ...p, name: myName };
-                    }
-                    return p;
-                });
-                await updateDoc(gameRef, { players: updatedPlayers });
-                showMessage('Nombre guardado. Esperando a los demás jugadores...', 'success');
-            } catch (e) {
-                showMessage(`Error al guardar el nombre: ${e.message}`, 'error');
-            }
-        }
-
-        async function startDraft() {
-            if (!isHost) return;
-            try {
-                const gameRef = doc(db, 'artifacts', appId, 'public', 'data', 'games', gameId);
-                const gameDoc = await getDoc(gameRef);
-                const gameState = gameDoc.data();
-                if (gameState.players.length !== gameState.numPlayers) {
-                    showMessage('No todos los jugadores se han unido aún.', 'error');
-                    return;
-                }
-                if (!gameState.players.every(p => p.name.length > 0)) {
-                     showMessage('Por favor, asegúrate de que todos los jugadores hayan ingresado sus nombres.', 'error');
-                     return;
-                }
-                
-                shuffle(itemPool);
-                const initialQueue = itemPool.slice(0, 50); // Usamos los primeros 50 jugadores
-
-                const firstPlayer = initialQueue.shift();
-                const now = Date.now();
-                const auctionEndTime = now + 30000;
-
-                const firstAuctionPlayer = {
-                    name: firstPlayer.name,
-                    nationality: firstPlayer.nationality,
-                    position: firstPlayer.position
-                };
-                
-                await setDoc(gameRef, {
-                    ...gameState,
-                    status: 'in_progress',
-                    auctionQueue: JSON.stringify(initialQueue),
-                    currentAuctionPlayer: firstAuctionPlayer,
-                    currentBid: firstPlayer.value,
-                    highestBidderId: null,
-                    auctionEndTime: auctionEndTime,
-                    revealedFirstNameLength: 1,
-                    revealedLastNameLength: firstPlayer.name.split(' ').length > 1 ? 1 : 0,
-                    hintsUsed: 0,
-                });
-            } catch (e) {
-                showMessage(`Error al iniciar el draft: ${e.message}`, 'error');
-            }
-        }
-
-        function renderAuctionScreen(gameState) {
-            const { players, currentAuctionPlayer: player, currentBid, highestBidderId, auctionEndTime, hintsUsed, revealedFirstNameLength, revealedLastNameLength } = gameState;
-            const auctionTimerElement = document.getElementById('auction-timer');
-            const playerInfoDiv = document.getElementById('player-info');
-            const playerFlagImg = document.getElementById('flag-img');
-            const playerCountryElement = document.getElementById('player-country');
-            const playerPositionElement = document.getElementById('player-position');
-            const currentBidTextElement = document.getElementById('current-bid-text');
-            const highestBidderTextElement = document.getElementById('highest-bidder-text');
-            const bidButtonsContainer = document.getElementById('bid-buttons');
-            const playerInventoriesContainer = document.getElementById('player-inventories');
-            const hintBtn = document.getElementById('hint-btn');
-            
-            if (!player) {
-                auctionTimerElement.textContent = "¡Fin del Draft!";
-                playerInfoDiv.classList.add('hidden');
-                bidButtonsContainer.innerHTML = '';
-                hintBtn.classList.add('hidden');
-                showMessage("El draft ha terminado. ¡Revisa tu plantilla!", 'success');
-                return;
-            }
-            
-            // Actualizar el temporizador localmente
-            if (timerInterval) clearInterval(timerInterval);
-            timerInterval = setInterval(() => {
-                const remaining = Math.max(0, Math.floor((auctionEndTime - Date.now()) / 1000));
-                auctionTimerElement.textContent = `Tiempo restante: ${remaining}s`;
-                if (remaining <= 0) {
-                     clearInterval(timerInterval);
-                     if (isHost) {
-                         endAuction(gameState);
-                     }
-                }
-            }, 1000);
-
-            // Actualiza la info del jugador en subasta
-            const localPlayer = { ...player, revealedFirstNameLength, revealedLastNameLength };
-            updateDisplayedName(localPlayer);
-            playerFlagImg.src = getFlagURL(player.nationality);
-            playerFlagImg.alt = `Bandera de ${player.nationality}`;
-            playerCountryElement.textContent = player.nationality;
-            playerPositionElement.textContent = player.position;
-            currentBidTextElement.textContent = numberFormatter.format(currentBid);
-            
-            const highestBidder = players.find(p => p.id === highestBidderId);
-            highestBidderTextElement.textContent = highestBidder ? `Postor más alto: ${highestBidder.name}` : 'Nadie ha pujado aún';
-            
-            // Renderiza los botones de puja
-            bidButtonsContainer.innerHTML = '';
-            players.forEach(p => {
-                if (p.id !== userId) return; // Solo renderizar botón para el usuario local
-                const bidAmount = currentBid + BID_INCREMENT;
-                const button = document.createElement('button');
-                button.textContent = `Pujar ${numberFormatter.format(bidAmount)}`;
-                button.className = "w-full p-3 rounded-lg bg-green-600 hover:bg-green-700 text-white font-bold transition duration-300 ease-in-out transform hover:scale-105 shadow-md focus:outline-none focus:ring-2 focus:ring-green-500";
-                
-                if (p.budget < bidAmount) {
-                    button.disabled = true;
-                    button.textContent = `Sin fondos suficientes`;
-                    button.className = "w-full p-3 rounded-lg bg-gray-600 text-gray-400 cursor-not-allowed";
-                } else if (highestBidderId === userId) {
-                    button.disabled = true;
-                    button.textContent = `Ya eres el postor más alto`;
-                    button.className = "w-full p-3 rounded-lg bg-gray-600 text-gray-400 cursor-not-allowed";
-                } else {
-                    button.addEventListener('click', () => handleBid(bidAmount));
-                }
-                bidButtonsContainer.appendChild(button);
-            });
-            
-            // Lógica del botón de pista
-            hintBtn.classList.remove('hidden');
-            if (hintsUsed >= 2) {
-                hintBtn.disabled = true;
-                hintBtn.classList.add('cursor-not-allowed', 'opacity-50');
-            } else {
-                hintBtn.disabled = false;
-                hintBtn.classList.remove('cursor-not-allowed', 'opacity-50');
-            }
-            hintBtn.onclick = handleHint;
-            
-            // Renderiza los inventarios de los jugadores
-            playerInventoriesContainer.innerHTML = '';
-            players.forEach(p => {
-                const playerDiv = document.createElement('div');
-                playerDiv.className = "mb-4 p-4 rounded-lg bg-gray-700 shadow-inner text-left";
-                playerDiv.innerHTML = `<h4 class="font-bold text-lg text-blue-300">${p.name}:</h4><p class="text-sm font-light text-gray-400">Presupuesto restante: <span class="text-white font-semibold">${numberFormatter.format(p.budget)}</span></p>`;
-                
-                const itemList = document.createElement('ul');
-                itemList.className = "mt-2 space-y-1 list-disc list-inside text-gray-300";
-                if (p.items.length === 0) {
-                    itemList.innerHTML = `<li>Aún no ha seleccionado jugadores.</li>`;
-                } else {
-                    p.items.forEach(item => {
-                        const li = document.createElement('li');
-                        li.textContent = item.name;
-                        itemList.appendChild(li);
-                    });
-                }
-                playerDiv.appendChild(itemList);
-                playerInventoriesContainer.appendChild(playerDiv);
-            });
-        }
-
-        async function handleBid(bidAmount) {
-            try {
-                const gameRef = doc(db, 'artifacts', appId, 'public', 'data', 'games', gameId);
-                const gameDoc = await getDoc(gameRef);
-                const gameState = gameDoc.data();
-                
-                const myPlayer = gameState.players.find(p => p.id === userId);
-                if (!myPlayer) return;
-                
-                if (myPlayer.budget < bidAmount) {
-                     showMessage("¡No tienes suficiente presupuesto!", 'error');
-                     return;
-                }
-                
-                const now = Date.now();
-                await updateDoc(gameRef, {
-                    currentBid: bidAmount,
-                    highestBidderId: userId,
-                    auctionEndTime: now + 30000, // Reinicia el temporizador
-                });
-            } catch (e) {
-                 showMessage(`Error al realizar la puja: ${e.message}`, 'error');
-            }
-        }
-        
-        async function handleHint() {
-            try {
-                const gameRef = doc(db, 'artifacts', appId, 'public', 'data', 'games', gameId);
-                const gameDoc = await getDoc(gameRef);
-                const gameState = gameDoc.data();
-                if (gameState.hintsUsed >= 2) {
-                    showMessage("Ya usaste tus dos pistas.", 'error');
-                    return;
-                }
-                
-                const nameParts = gameState.currentAuctionPlayer.name.split(' ');
-                let newRevealedFirstNameLength = gameState.revealedFirstNameLength;
-                let newRevealedLastNameLength = gameState.revealedLastNameLength;
-
-                if (newRevealedFirstNameLength < nameParts[0].length) {
-                    newRevealedFirstNameLength++;
-                } else if (nameParts.length > 1 && newRevealedLastNameLength < nameParts.slice(1).join(' ').length) {
-                    newRevealedLastNameLength++;
-                } else {
-                    showMessage("Ya no hay más pistas disponibles para este jugador.", 'info');
-                    return;
-                }
-
-                await updateDoc(gameRef, {
-                    currentBid: gameState.currentBid + BID_HINT_INCREMENT,
-                    hintsUsed: gameState.hintsUsed + 1,
-                    revealedFirstNameLength: newRevealedFirstNameLength,
-                    revealedLastNameLength: newRevealedLastNameLength,
-                });
-
-            } catch (e) {
-                 showMessage(`Error al pedir una pista: ${e.message}`, 'error');
-            }
-        }
-
-        async function endAuction(gameState) {
-             const gameRef = doc(db, 'artifacts', appId, 'public', 'data', 'games', gameId);
-             
-             const { currentAuctionPlayer, currentBid, highestBidderId, auctionQueue, players } = gameState;
-             const parsedAuctionQueue = JSON.parse(auctionQueue);
-             
-             if (highestBidderId) {
-                 const winningPlayer = players.find(p => p.id === highestBidderId);
-                 if (winningPlayer) {
-                      const updatedPlayers = players.map(p => {
-                          if (p.id === highestBidderId) {
-                              return { ...p, budget: p.budget - currentBid, items: [...p.items, currentAuctionPlayer] };
-                          }
-                          return p;
-                      });
-                      
-                      const nextPlayer = parsedAuctionQueue.shift() || null;
-                      const now = Date.now();
-                      const nextAuctionEndTime = nextPlayer ? now + 30000 : 0;
-                      
-                      const nextAuctionPlayer = nextPlayer ? {
-                         name: nextPlayer.name,
-                         nationality: nextPlayer.nationality,
-                         position: nextPlayer.position
-                      } : null;
-                      
-                      const newRevealedFirstNameLength = nextPlayer ? 1 : 0;
-                      const newRevealedLastNameLength = nextPlayer && nextPlayer.name.split(' ').length > 1 ? 1 : 0;
-
-                      await updateDoc(gameRef, {
-                          players: updatedPlayers,
-                          currentAuctionPlayer: nextAuctionPlayer,
-                          currentBid: nextPlayer ? nextPlayer.value : 0,
-                          highestBidderId: null,
-                          auctionEndTime: nextAuctionEndTime,
-                          revealedFirstNameLength: newRevealedFirstNameLength,
-                          revealedLastNameLength: newRevealedLastNameLength,
-                          hintsUsed: 0,
-                          auctionQueue: JSON.stringify(parsedAuctionQueue),
-                          status: nextPlayer ? 'in_progress' : 'finished'
-                      });
-                 }
-             } else {
-                 const nextPlayer = parsedAuctionQueue.shift() || null;
-                 const now = Date.now();
-                 const nextAuctionEndTime = nextPlayer ? now + 30000 : 0;
-                 
-                 const nextAuctionPlayer = nextPlayer ? {
-                    name: nextPlayer.name,
-                    nationality: nextPlayer.nationality,
-                    position: nextPlayer.position
-                 } : null;
-                 
-                 const newRevealedFirstNameLength = nextPlayer ? 1 : 0;
-                 const newRevealedLastNameLength = nextPlayer && nextPlayer.name.split(' ').length > 1 ? 1 : 0;
-
-                 await updateDoc(gameRef, {
-                     currentAuctionPlayer: nextAuctionPlayer,
-                     currentBid: nextPlayer ? nextPlayer.value : 0,
-                     highestBidderId: null,
-                     auctionEndTime: nextAuctionEndTime,
-                     revealedFirstNameLength: newRevealedFirstNameLength,
-                     revealedLastNameLength: newRevealedLastNameLength,
-                     hintsUsed: 0,
-                     auctionQueue: JSON.stringify(parsedAuctionQueue),
-                     status: nextPlayer ? 'in_progress' : 'finished'
-                 });
-             }
-        }
-
-        function backToLobby() {
-            gameId = null;
-            isHost = false;
-            lobbySection.classList.remove('hidden');
-            playerSelectSection.classList.add('hidden');
-            playerNamesSection.classList.add('hidden');
-            auctionSection.classList.add('hidden');
-            backBtn.classList.add('hidden');
-            document.getElementById('join-game-id-input').value = '';
-        }
-
-        createGameBtn.addEventListener('click', createGame);
-        joinGameBtn.addEventListener('click', joinGame);
-        confirmNamesBtn.addEventListener('click', confirmPlayerNames);
-        startGameBtn.addEventListener('click', startDraft);
-        backBtn.addEventListener('click', backToLobby);
-    </script>
     <style>
-        body {
-            background-color: #1a202c; /* Fondo oscuro */
-            color: #e2e8f0; /* Color de texto claro */
-            font-family: 'Inter', sans-serif;
-        }
-        .flag-icon {
-            width: 48px; /* Tamaño de bandera más pequeño */
-            height: auto; /* Mantiene la proporción */
-            border-radius: 6px;
-        }
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap');
+        body { font-family: 'Inter', sans-serif; }
     </style>
 </head>
-<body class="flex flex-col items-center justify-center min-h-screen p-4">
-    <button
-        id="back-btn-global"
-        class="fixed top-4 left-4 p-3 bg-gray-600 hover:bg-gray-700 text-white font-bold rounded-full transition duration-300 ease-in-out transform hover:scale-110 shadow-lg focus:outline-none focus:ring-4 focus:ring-gray-500 focus:ring-opacity-50 hidden"
-        aria-label="Volver a la pantalla anterior"
-    >
-        <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7" />
-        </svg>
-    </button>
-    <p id="user-id-display" class="fixed top-4 right-4 text-xs text-gray-500"></p>
+<body class="bg-gray-800 font-sans leading-normal tracking-normal text-white">
+    <div class="container mx-auto p-4 md:p-8">
+        <header class="text-center mb-8">
+            <h1 class="text-4xl font-extrabold text-white mb-2">Simulador de Draft Colaborativo</h1>
+            <p class="text-gray-400">Únete a otros para competir en un draft en tiempo real.</p>
+        </header>
 
-    <div class="bg-gray-800 p-8 rounded-2xl shadow-2xl max-w-lg w-full text-center">
-        <h1 class="text-4xl font-extrabold mb-6 text-transparent bg-clip-text bg-gradient-to-r from-purple-400 to-pink-600">
-            Draft de Subasta FC 24
-        </h1>
+        <!-- Mensajes del sistema -->
+        <div id="message-box" class="hidden text-center p-4 rounded-lg mt-4 text-white"></div>
+        
+        <!-- Estado de la conexión -->
+        <div id="connection-status" class="flex justify-center items-center text-sm font-medium mb-4">
+            <i class="fas fa-sync fa-spin mr-2 text-blue-400"></i>
+            <span id="user-id-display" class="text-gray-400">Conectando...</span>
+        </div>
 
-        <!-- Sección de Lobby, inicialmente visible -->
-        <div id="lobby-section" class="space-y-6">
-            <h2 class="text-2xl font-bold">Inicia una partida o únete a una existente</h2>
-            <div class="space-y-4">
-                <p class="text-gray-400">Crear una nueva partida:</p>
-                <div class="flex flex-col space-y-4">
-                    <label for="num-players" class="block text-sm font-semibold mb-2">
-                        Selecciona la cantidad de jugadores:
-                    </label>
-                    <select id="num-players" class="w-full p-3 rounded-lg bg-gray-700 border border-gray-600 text-white focus:outline-none focus:border-blue-500 transition duration-200">
-                        <option value="2">2</option>
-                        <option value="3">3</option>
-                        <option value="4">4</option>
-                        <option value="5">5</option>
-                        <option value="6">6</option>
-                        <option value="7">7</option>
-                        <option value="8">8</option>
-                    </select>
-                    <button
-                        id="create-game-btn"
-                        class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-6 rounded-xl transition duration-300 ease-in-out transform hover:scale-105 shadow-lg focus:outline-none focus:ring-4 focus:ring-blue-500 focus:ring-opacity-50"
-                    >
-                        Crear Partida
-                    </button>
+        <!-- Controles para crear equipos -->
+        <div class="bg-gray-900 rounded-lg shadow-xl p-6 border border-gray-700 mb-8">
+            <h2 class="text-xl font-bold text-white mb-4">Crea tu equipo</h2>
+            <form id="add-team-form" class="flex flex-col md:flex-row gap-4">
+                <input type="text" id="new-team-name" required placeholder="Nombre del Equipo" class="flex-1 rounded-md bg-gray-700 text-white border-gray-600 shadow-sm focus:border-indigo-500 focus:ring focus:ring-indigo-500 focus:ring-opacity-50">
+                <button type="submit" class="py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-green-700 hover:bg-green-800 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-600 transition duration-300">
+                    Agregar Equipo
+                </button>
+            </form>
+        </div>
+
+        <!-- Botón para iniciar el draft -->
+        <div class="flex justify-center mt-6 mb-8">
+            <button id="start-draft-btn" class="hidden py-3 px-8 bg-blue-700 text-white font-bold text-lg rounded-lg shadow-lg hover:bg-blue-800 transition duration-300">
+                <i class="fas fa-play-circle mr-2"></i> Iniciar Draft
+            </button>
+        </div>
+        
+        <!-- Sección de la subasta -->
+        <div id="auction-area" class="hidden bg-gray-700 rounded-lg shadow-xl p-8 text-center border border-gray-600 mb-8">
+            <h2 class="text-3xl font-extrabold text-white mb-4">¡Subasta en curso!</h2>
+            <div id="timer-display" class="text-5xl font-extrabold text-red-400 mb-4"></div>
+            <div class="flex flex-col md:flex-row justify-center items-center md:space-x-8 space-y-4 md:space-y-0">
+                <div id="auction-player-card" class="bg-gray-900 p-6 rounded-lg shadow-md w-full max-w-sm">
+                    <!-- La información del jugador se renderizará aquí -->
+                </div>
+                <div id="bid-info" class="bg-gray-900 p-6 rounded-lg shadow-md w-full max-w-sm">
+                    <!-- La información de la puja se renderizará aquí -->
                 </div>
             </div>
-            <hr class="border-gray-700 my-4">
-            <div class="space-y-4">
-                <p class="text-gray-400">Unirse a una partida:</p>
-                <input
-                    id="join-game-id-input"
-                    type="text"
-                    placeholder="Introduce el ID de la partida"
-                    class="w-full p-3 rounded-lg bg-gray-700 border border-gray-600 text-white focus:outline-none focus:border-blue-500 transition duration-200"
-                />
-                <button
-                    id="join-game-btn"
-                    class="w-full bg-purple-600 hover:bg-purple-700 text-white font-bold py-3 px-6 rounded-xl transition duration-300 ease-in-out transform hover:scale-105 shadow-lg focus:outline-none focus:ring-4 focus:ring-purple-500 focus:ring-opacity-50"
-                >
-                    Unirse a Partida
+            
+            <div class="mt-8">
+                <label for="team-select" class="text-gray-300 font-medium mb-2 block">Selecciona tu equipo:</label>
+                <select id="team-select" class="w-full md:w-1/2 mx-auto mb-4 rounded-md bg-gray-800 text-white border-gray-700 shadow-sm focus:border-indigo-500 focus:ring focus:ring-indigo-500 focus:ring-opacity-50"></select>
+            </div>
+            
+            <div id="bid-buttons" class="flex flex-col md:flex-row justify-center gap-4 mt-4">
+                <button id="bid-initial-btn" data-bid="initial" class="py-3 px-6 bg-green-500 text-black font-bold text-lg rounded-lg shadow-lg hover:bg-green-600 transition duration-300">
+                    Pujar
+                </button>
+                <button id="bid-3m-btn" data-bid="3000000" class="py-3 px-6 bg-green-700 text-white font-bold text-lg rounded-lg shadow-lg hover:bg-green-800 transition duration-300">
+                    Pujar +3M
+                </button>
+                <button id="bid-8m-btn" data-bid="8000000" class="py-3 px-6 bg-green-900 text-white font-bold text-lg rounded-lg shadow-lg hover:bg-green-950 transition duration-300">
+                    Pujar +8M
+                </button>
+                <button id="hint-btn" class="py-3 px-6 bg-red-600 text-white font-bold text-lg rounded-lg shadow-lg hover:bg-red-700 transition duration-300 disabled:opacity-50 disabled:cursor-not-allowed">
+                    Pista (<span id="hints-left">2</span>)
                 </button>
             </div>
         </div>
 
-        <!-- Sección de ingreso de nombres, inicialmente oculta -->
-        <div id="player-names-section" class="hidden">
-            <h2 class="text-2xl font-bold mb-4">Ingresa tu Nombre</h2>
-            <p id="room-id-display" class="text-sm font-semibold mb-4 text-gray-400"></p>
-            <div id="player-name-inputs" class="space-y-4">
-                <!-- Aquí se generarán los campos de texto para todos los jugadores -->
+        <!-- Listado de jugadores de cada equipo -->
+        <div class="bg-gray-900 rounded-lg shadow-xl p-6 border border-gray-700">
+            <h2 class="text-2xl font-bold text-white mb-4">Equipos y Jugadores</h2>
+            <div id="teams-list-container" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                <!-- Las tarjetas de los equipos se renderizarán aquí -->
             </div>
-            <button
-                id="confirm-names-btn"
-                class="w-full mt-6 bg-green-600 hover:bg-green-700 text-white font-bold py-3 px-6 rounded-xl transition duration-300 ease-in-out transform hover:scale-105 shadow-lg focus:outline-none focus:ring-4 focus:ring-green-500 focus:ring-opacity-50"
-            >
-                Confirmar Nombre
-            </button>
-            <button
-                id="start-draft-btn"
-                class="w-full mt-4 bg-yellow-600 hover:bg-yellow-700 text-white font-bold py-3 px-6 rounded-xl transition duration-300 ease-in-out transform hover:scale-105 shadow-lg focus:outline-none focus:ring-4 focus:ring-yellow-500 focus:ring-opacity-50 hidden"
-            >
-                Empezar Subasta
-            </button>
-        </div>
-
-        <!-- Sección de Subasta, inicialmente oculta -->
-        <div id="auction-section" class="hidden text-center">
-            <div id="auction-container" class="mb-6">
-                <h2 id="auction-timer" class="text-4xl font-extrabold text-white mb-4"></h2>
-                <div id="player-info" class="p-6 rounded-xl bg-gray-700 shadow-lg">
-                    <p id="player-name" class="text-3xl font-extrabold mb-4"></p>
-                    <div id="player-nationality" class="mb-4 flex flex-col items-center">
-                        <img id="flag-img" src="" alt="Bandera del país del jugador" class="flag-icon mb-2">
-                        <p id="player-country" class="text-xl font-bold"></p>
-                    </div>
-                    <p id="player-position" class="text-xl font-bold mb-2"></p>
-                    <p id="current-bid-text" class="text-2xl font-semibold text-green-400"></p>
-                    <p id="highest-bidder-text" class="text-sm text-gray-400 mt-2"></p>
-                </div>
-            </div>
-            <div id="bid-buttons" class="space-y-4 mb-6">
-            </div>
-            <button
-                id="hint-btn"
-                class="w-full bg-yellow-500 hover:bg-yellow-600 text-gray-900 font-bold py-3 px-6 rounded-xl transition duration-300 ease-in-out transform hover:scale-105 shadow-lg focus:outline-none focus:ring-4 focus:ring-yellow-400 focus:ring-opacity-50 mb-6"
-            >
-                <span class="flex items-center justify-center">
-                    <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.663 17h4.674M12 3v12.5M12 18h.01M16.5 10c0-2.828-2.172-5-5-5s-5 2.172-5 5c0 1.25.45 2.45 1.28 3.33L10 16.5V21h4v-4.5L15.22 13.33C15.54 12.9 16.5 11.5 16.5 10z"/>
-                    </svg>
-                    Pista
-                </span>
-            </button>
-            <div id="player-inventories">
-                <h3 class="text-lg font-semibold mb-2">Plantillas de los Jugadores:</h3>
-            </div>
-        </div>
-
-        <div id="message-container" class="mt-6 p-4 rounded-lg text-sm transition-all duration-300 ease-in-out hidden">
-            <p id="message-text" class="font-semibold"></p>
         </div>
     </div>
+    
+    <!-- Firebase SDKs -->
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, signInAnonymously, onAuthStateChanged, signInWithCustomToken } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, doc, getDoc, setDoc, onSnapshot } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+        import { setLogLevel } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+        // Establece el nivel de registro para depuración
+        setLogLevel('debug');
+
+        // Variables globales proporcionadas por el entorno
+        const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+        const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : {};
+        const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
+        
+        // Data de los jugadores
+        const playersData = [
+            // Defensas (30)
+            { name: 'Virgil', lastName: 'van Dijk', position: 'DFC', nationality: 'NED', value: 85000000 },
+            { name: 'Rúben', lastName: 'Dias', position: 'DFC', nationality: 'POR', value: 80000000 },
+            { name: 'Kyle', lastName: 'Walker', position: 'LD', nationality: 'ENG', value: 35000000 },
+            { name: 'Ronald', lastName: 'Araujo', position: 'DFC', nationality: 'URU', value: 70000000 },
+            { name: 'Jules', lastName: 'Koundé', position: 'DFC', nationality: 'FRA', value: 65000000 },
+            { name: 'Éder', lastName: 'Militão', position: 'DFC', nationality: 'BRA', value: 75000000 },
+            { name: 'Matthijs', lastName: 'de Ligt', position: 'DFC', nationality: 'NED', value: 70000000 },
+            { name: 'Marquinhos', lastName: '', position: 'DFC', nationality: 'BRA', value: 75000000 },
+            { name: 'Joško', lastName: 'Gvardiol', position: 'DFC', nationality: 'CRO', value: 75000000 },
+            { name: 'Antonio', lastName: 'Rüdiger', position: 'DFC', nationality: 'GER', value: 50000000 },
+            { name: 'William', lastName: 'Saliba', position: 'DFC', nationality: 'FRA', value: 70000000 },
+            { name: 'Theo', lastName: 'Hernández', position: 'LI', nationality: 'FRA', value: 60000000 },
+            { name: 'Alphonso', lastName: 'Davies', position: 'LI', nationality: 'CAN', value: 55000000 },
+            { name: 'Alejandro', lastName: 'Balde', position: 'LI', nationality: 'ESP', value: 50000000 },
+            { name: 'Manuel', lastName: 'Akanji', position: 'DFC', nationality: 'SUI', value: 45000000 },
+            { name: 'David', lastName: 'Alaba', position: 'DFC', nationality: 'AUT', value: 40000000 },
+            { name: 'Ben', lastName: 'White', position: 'LD', nationality: 'ENG', value: 55000000 },
+            { name: 'John', lastName: 'Stones', position: 'DFC', nationality: 'ENG', value: 45000000 },
+            { name: 'Lisandro', lastName: 'Martínez', position: 'DFC', nationality: 'ARG', value: 50000000 },
+            { name: 'Reece', lastName: 'James', position: 'LD', nationality: 'ENG', value: 60000000 },
+            { name: 'Andrew', lastName: 'Robertson', position: 'LI', nationality: 'SCO', value: 40000000 },
+            { name: 'Fikayo', lastName: 'Tomori', position: 'DFC', nationality: 'ENG', value: 40000000 },
+            { name: 'Milan', lastName: 'Škriniar', position: 'DFC', nationality: 'SVK', value: 45000000 },
+            { name: 'Raphaël', lastName: 'Varane', position: 'DFC', nationality: 'FRA', value: 35000000 },
+            { name: 'Dayot', lastName: 'Upamecano', position: 'DFC', nationality: 'FRA', value: 50000000 },
+            { name: 'Lucas', lastName: 'Hernández', position: 'LI', nationality: 'FRA', value: 45000000 },
+            { name: 'Nicolò', lastName: 'Barella', position: 'MC', nationality: 'ITA', value: 75000000 },
+            { name: 'Federico', lastName: 'Valverde', position: 'MCO', nationality: 'URU', value: 100000000 },
+            { name: 'Bernardo', lastName: 'Silva', position: 'MCO', nationality: 'POR', value: 80000000 },
+            { name: 'Jude', lastName: 'Bellingham', position: 'MCO', nationality: 'ENG', value: 180000000 },
+
+            // Mediocampistas (35)
+            { name: 'Kevin', lastName: 'De Bruyne', position: 'MCO', nationality: 'BEL', value: 70000000 },
+            { name: 'Rodri', lastName: '', position: 'MCD', nationality: 'ESP', value: 110000000 },
+            { name: 'Frenkie', lastName: 'de Jong', position: 'MC', nationality: 'NED', value: 80000000 },
+            { name: 'Joshua', lastName: 'Kimmich', position: 'MCD', nationality: 'GER', value: 75000000 },
+            { name: 'Toni', lastName: 'Kroos', position: 'MC', nationality: 'GER', value: 12000000 },
+            { name: 'Luka', lastName: 'Modrić', position: 'MC', nationality: 'CRO', value: 10000000 },
+            { name: 'Bruno', lastName: 'Fernandes', position: 'MCO', nationality: 'POR', value: 70000000 },
+            { name: 'Martin', lastName: 'Ødegaard', position: 'MCO', nationality: 'NOR', value: 90000000 },
+            { name: 'Casemiro', lastName: '', position: 'MCD', nationality: 'BRA', value: 40000000 },
+            { name: 'Declan', lastName: 'Rice', position: 'MCD', nationality: 'ENG', value: 110000000 },
+            { name: 'Pedri', lastName: '', position: 'MC', nationality: 'ESP', value: 90000000 },
+            { name: 'Gavi', lastName: '', position: 'MC', nationality: 'ESP', value: 70000000 },
+            { name: 'Ilkay', lastName: 'Gündoğan', position: 'MC', nationality: 'GER', value: 20000000 },
+            { name: 'Florian', lastName: 'Wirtz', position: 'MCO', nationality: 'GER', value: 100000000 },
+            { name: 'Jamal', lastName: 'Musiala', position: 'MCO', nationality: 'GER', value: 110000000 },
+            { name: 'Alexis', lastName: 'Mac Allister', position: 'MC', nationality: 'ARG', value: 70000000 },
+            { name: 'Enzo', lastName: 'Fernández', position: 'MC', nationality: 'ARG', value: 80000000 },
+            { name: 'João', lastName: 'Palhinha', position: 'MCD', nationality: 'POR', value: 55000000 },
+            { name: 'Sandro', lastName: 'Tonali', position: 'MCD', nationality: 'ITA', value: 50000000 },
+            { name: 'Aurélien', lastName: 'Tchouaméni', position: 'MCD', nationality: 'FRA', value: 80000000 },
+            { name: 'Mason', lastName: 'Mount', position: 'MCO', nationality: 'ENG', value: 45000000 },
+            { name: 'Sergej', lastName: 'Milinković-Savić', position: 'MC', nationality: 'SRB', value: 25000000 },
+            { name: 'Eduardo', lastName: 'Camavinga', position: 'MCD', nationality: 'FRA', value: 90000000 },
+            { name: 'Dani', lastName: 'Olmo', position: 'MCO', nationality: 'ESP', value: 50000000 },
+            { name: 'Federico', lastName: 'Chiesa', position: 'MD', nationality: 'ITA', value: 40000000 },
+            { name: 'Gavi', lastName: 'Paez', position: 'MC', nationality: 'ESP', value: 70000000 },
+            { name: 'Xavi', lastName: 'Simons', position: 'MCO', nationality: 'NED', value: 80000000 },
+            { name: 'Dominik', lastName: 'Szoboszlai', position: 'MCO', nationality: 'HUN', value: 75000000 },
+            { name: 'Matteo', lastName: 'Guendouzi', position: 'MC', nationality: 'FRA', value: 25000000 },
+            { name: 'Nicolò', lastName: 'Zaniolo', position: 'MCO', nationality: 'ITA', value: 25000000 },
+            { name: 'Youri', lastName: 'Tielemans', position: 'MC', nationality: 'BEL', value: 20000000 },
+            { name: 'Thomas', lastName: 'Partey', position: 'MCD', nationality: 'GHA', value: 30000000 },
+            { name: 'Franck', lastName: 'Kessié', position: 'MC', nationality: 'CIV', value: 25000000 },
+            { name: 'Giorgian', lastName: 'De Arrascaeta', position: 'MCO', nationality: 'URU', value: 15000000 },
+            { name: 'James', lastName: 'Maddison', position: 'MCO', nationality: 'ENG', value: 70000000 },
+
+            // Delanteros (25)
+            { name: 'Kylian', lastName: 'Mbappé', position: 'DC', nationality: 'FRA', value: 180000000 },
+            { name: 'Erling', lastName: 'Haaland', position: 'DC', nationality: 'NOR', value: 180000000 },
+            { name: 'Vinícius', lastName: 'Júnior', position: 'EI', nationality: 'BRA', value: 150000000 },
+            { name: 'Victor', lastName: 'Osimhen', position: 'DC', nationality: 'NGA', value: 120000000 },
+            { name: 'Mohamed', lastName: 'Salah', position: 'ED', nationality: 'EGY', value: 65000000 },
+            { name: 'Harry', lastName: 'Kane', position: 'DC', nationality: 'ENG', value: 100000000 },
+            { name: 'Robert', lastName: 'Lewandowski', position: 'DC', nationality: 'POL', value: 20000000 },
+            { name: 'Antoine', lastName: 'Griezmann', position: 'SD', nationality: 'FRA', value: 25000000 },
+            { name: 'Karim', lastName: 'Benzema', position: 'DC', nationality: 'FRA', value: 15000000 },
+            { name: 'Rafael', lastName: 'Leão', position: 'EI', nationality: 'POR', value: 90000000 },
+            { name: 'Bukayo', lastName: 'Saka', position: 'ED', nationality: 'ENG', value: 130000000 },
+            { name: 'Phil', lastName: 'Foden', position: 'MCO', nationality: 'ENG', value: 110000000 },
+            { name: 'Khvicha', lastName: 'Kvaratskhelia', position: 'EI', nationality: 'GEO', value: 85000000 },
+            { name: 'Federico', lastName: 'Chiesa', position: 'EI', nationality: 'ITA', value: 40000000 },
+            { name: 'Jack', lastName: 'Grealish', position: 'EI', nationality: 'ENG', value: 70000000 },
+            { name: 'Raphinha', lastName: '', position: 'ED', nationality: 'BRA', value: 50000000 },
+            { name: 'Diogo', lastName: 'Jota', position: 'DC', nationality: 'POR', value: 50000000 },
+            { name: 'Son', lastName: 'Heung-Min', position: 'EI', nationality: 'KOR', value: 50000000 },
+            { name: 'Marcus', lastName: 'Rashford', position: 'EI', nationality: 'ENG', value: 75000000 },
+            { name: 'Dusan', lastName: 'Vlahovic', position: 'DC', nationality: 'SRB', value: 60000000 },
+            { name: 'Gabriel', lastName: 'Jesus', position: 'DC', nationality: 'BRA', value: 70000000 },
+            { name: 'Christopher', lastName: 'Nkunku', position: 'MCO', nationality: 'FRA', value: 80000000 },
+            { name: 'Aleksandar', lastName: 'Mitrovic', position: 'DC', nationality: 'SRB', value: 28000000 },
+            { name: 'Álvaro', lastName: 'Morata', position: 'DC', nationality: 'ESP', value: 20000000 },
+            { name: 'Ferran', lastName: 'Torres', position: 'ED', nationality: 'ESP', value: 25000000 },
+
+            // Arqueros (15)
+            { name: 'Thibaut', lastName: 'Courtois', position: 'POR', nationality: 'BEL', value: 35000000 },
+            { name: 'Alisson', lastName: 'Becker', position: 'POR', nationality: 'BRA', value: 35000000 },
+            { name: 'Ederson', lastName: 'Moraes', position: 'POR', nationality: 'BRA', value: 40000000 },
+            { name: 'Marc-André', lastName: 'ter Stegen', position: 'POR', nationality: 'GER', value: 35000000 },
+            { name: 'Jan', lastName: 'Oblak', position: 'POR', nationality: 'SLO', value: 30000000 },
+            { name: 'Manuel', lastName: 'Neuer', position: 'POR', nationality: 'GER', value: 7000000 },
+            { name: 'Gianluigi', lastName: 'Donnarumma', position: 'POR', nationality: 'ITA', value: 45000000 },
+            { name: 'Mike', lastName: 'Maignan', position: 'POR', nationality: 'FRA', value: 45000000 },
+            { name: 'André', lastName: 'Onana', position: 'POR', nationality: 'CMR', value: 40000000 },
+            { name: 'Aaron', lastName: 'Ramsdale', position: 'POR', nationality: 'ENG', value: 38000000 },
+            { name: 'Diogo', lastName: 'Costa', position: 'POR', nationality: 'POR', value: 45000000 },
+            { name: 'Gregor', lastName: 'Kobel', position: 'POR', nationality: 'SUI', value: 40000000 },
+            { name: 'Álex', lastName: 'Remiro', position: 'POR', nationality: 'ESP', value: 25000000 },
+            { name: 'David', lastName: 'Raya', position: 'POR', nationality: 'ESP', value: 35000000 },
+            { name: 'Wojciech', lastName: 'Szczesny', position: 'POR', nationality: 'POL', value: 15000000 }
+        ];
+
+        // UI elements
+        const teamForm = document.getElementById('add-team-form');
+        const teamNameInput = document.getElementById('new-team-name');
+        const startDraftBtn = document.getElementById('start-draft-btn');
+        const auctionArea = document.getElementById('auction-area');
+        const playerCard = document.getElementById('auction-player-card');
+        const bidInfo = document.getElementById('bid-info');
+        const bidButtons = document.getElementById('bid-buttons');
+        const teamsListContainer = document.getElementById('teams-list-container');
+        const messageBox = document.getElementById('message-box');
+        const hintBtn = document.getElementById('hint-btn');
+        const hintsLeftSpan = document.getElementById('hints-left');
+        const initialBidBtn = document.getElementById('bid-initial-btn');
+        const userIdDisplay = document.getElementById('user-id-display');
+
+        // Firebase Initialization
+        let auth, db, userId, unsubscribeSnapshot;
+        let timerInterval;
+        const stateDocPath = `artifacts/${appId}/public/data/draft_game/game_state`;
+
+        window.onload = async () => {
+            try {
+                const app = initializeApp(firebaseConfig);
+                auth = getAuth(app);
+                db = getFirestore(app);
+
+                // Autenticación anónima para permitir la colaboración sin registro
+                onAuthStateChanged(auth, async (user) => {
+                    if (user) {
+                        userId = user.uid;
+                        userIdDisplay.textContent = `ID de usuario: ${userId}`;
+                        console.log("Authenticated with user ID:", userId);
+
+                        // Se suscribe a los cambios del estado del juego en Firestore
+                        unsubscribeSnapshot = onSnapshot(doc(db, stateDocPath), (docSnapshot) => {
+                            if (docSnapshot.exists()) {
+                                const gameState = docSnapshot.data();
+                                updateUI(gameState);
+                            } else {
+                                console.log("Game state document does not exist, creating a new one.");
+                                createInitialState();
+                            }
+                        });
+                    } else {
+                        console.log("No user signed in. Signing in anonymously...");
+                        await (initialAuthToken ? signInWithCustomToken(auth, initialAuthToken) : signInAnonymously(auth));
+                    }
+                });
+            } catch (error) {
+                console.error("Firebase initialization or authentication failed:", error);
+                showMessage("Error de conexión. Inténtalo de nuevo más tarde.", 'error');
+            }
+        };
+
+        // Funciones de actualización de Firestore
+        async function createInitialState() {
+            try {
+                shuffleArray(playersData);
+                const initialState = {
+                    teams: [],
+                    playersPool: playersData,
+                    currentAuction: {
+                        player: null,
+                        currentBid: 0,
+                        currentBidderId: null,
+                        timer: 30,
+                        auctionActive: false,
+                        hintsUsed: 0
+                    },
+                };
+                await setDoc(doc(db, stateDocPath), initialState);
+                console.log("Initial game state created.");
+            } catch (error) {
+                console.error("Error creating initial state:", error);
+                showMessage("Error al iniciar el juego. Inténtalo de nuevo.", 'error');
+            }
+        }
+
+        async function updateState(updates) {
+            try {
+                await setDoc(doc(db, stateDocPath), updates, { merge: true });
+            } catch (error) {
+                console.error("Error updating game state:", error);
+                showMessage("Error al actualizar el estado del juego.", 'error');
+            }
+        }
+
+        async function handleAddTeam(event) {
+            event.preventDefault();
+            const teamName = teamNameInput.value.trim();
+            if (!teamName) {
+                showMessage("Por favor, introduce un nombre para el equipo.", 'error');
+                return;
+            }
+
+            const docRef = doc(db, stateDocPath);
+            const docSnap = await getDoc(docRef);
+            if (!docSnap.exists()) {
+                showMessage("El juego no está inicializado. Espera un momento y vuelve a intentarlo.", 'error');
+                return;
+            }
+
+            const gameState = docSnap.data();
+            if (gameState.teams.find(t => t.id === userId)) {
+                showMessage("Ya tienes un equipo en este draft.", 'error');
+                return;
+            }
+
+            const newTeams = [...gameState.teams, {
+                id: userId,
+                name: teamName,
+                players: [],
+                budget: 1500000000,
+            }];
+
+            await updateState({ teams: newTeams });
+            teamNameInput.value = '';
+            showMessage(`Equipo "${teamName}" agregado con éxito.`);
+        }
+
+        async function startDraft() {
+            const docRef = doc(db, stateDocPath);
+            const docSnap = await getDoc(docRef);
+            const gameState = docSnap.data();
+
+            if (gameState.teams.length < 1) {
+                showMessage("Debes crear al menos un equipo para iniciar el draft.", 'error');
+                return;
+            }
+            if (gameState.currentAuction.auctionActive) {
+                showMessage("La subasta ya está en curso.", 'error');
+                return;
+            }
+
+            const nextPlayer = gameState.playersPool.shift();
+            const updatedAuction = {
+                player: nextPlayer,
+                currentBid: nextPlayer.value,
+                currentBidderId: null,
+                timer: 30,
+                auctionActive: true,
+                hintsUsed: 0
+            };
+
+            await updateState({
+                playersPool: gameState.playersPool,
+                currentAuction: updatedAuction
+            });
+        }
+
+        async function handleBid(event) {
+            const button = event.target.closest('button');
+            if (!button || button.id === 'hint-btn') return;
+            
+            const docRef = doc(db, stateDocPath);
+            const docSnap = await getDoc(docRef);
+            const gameState = docSnap.data();
+            const currentAuction = gameState.currentAuction;
+            const teams = gameState.teams;
+
+            const biddingTeam = teams.find(t => t.id === userId);
+            if (!biddingTeam) {
+                showMessage("Debes unirte a un equipo para pujar.", 'error');
+                return;
+            }
+
+            let newBid = 0;
+            if (button.id === 'bid-initial-btn') {
+                newBid = currentAuction.player.value;
+            } else if (button.id === 'bid-3m-btn') {
+                newBid = currentAuction.currentBid + 3000000;
+            } else if (button.id === 'bid-8m-btn') {
+                newBid = currentAuction.currentBid + 8000000;
+            }
+
+            if (newBid <= currentAuction.currentBid) {
+                showMessage("Tu puja debe ser mayor que la puja actual.", 'error');
+                return;
+            }
+
+            if (biddingTeam.budget < newBid) {
+                showMessage(`Presupuesto insuficiente. Te faltan ${formatCurrency(newBid - biddingTeam.budget)}.`, 'error');
+                return;
+            }
+            if (biddingTeam.players.length >= 22) {
+                showMessage("Tu equipo ya está lleno (22 jugadores).", 'error');
+                return;
+            }
+
+            const updatedAuction = { ...currentAuction, currentBid: newBid, currentBidderId: userId, timer: 30 };
+            await updateState({ currentAuction: updatedAuction });
+            showMessage(`${biddingTeam.name} ha pujado ${formatCurrency(newBid)}.`, 'success');
+        }
+
+        async function handleHint() {
+            const docRef = doc(db, stateDocPath);
+            const docSnap = await getDoc(docRef);
+            const gameState = docSnap.data();
+            let currentAuction = gameState.currentAuction;
+            
+            if (currentAuction.hintsUsed < 2) {
+                currentAuction.hintsUsed++;
+                
+                // Aumentar el valor del jugador en 5 millones al usar una pista
+                const updatedPlayer = { ...currentAuction.player, value: currentAuction.player.value + 5000000 };
+                // Actualizar la puja actual si es menor que el nuevo valor del jugador
+                if (currentAuction.currentBid < updatedPlayer.value) {
+                    currentAuction.currentBid = updatedPlayer.value;
+                }
+                
+                await updateState({ currentAuction: { ...currentAuction, player: updatedPlayer } });
+            }
+        }
+
+        async function endAuction() {
+            const docRef = doc(db, stateDocPath);
+            const docSnap = await getDoc(docRef);
+            const gameState = docSnap.data();
+            const currentAuction = gameState.currentAuction;
+            const teams = gameState.teams;
+            const playersPool = gameState.playersPool;
+            
+            if (currentAuction.currentBidderId) {
+                const winningTeam = teams.find(t => t.id === currentAuction.currentBidderId);
+                winningTeam.budget -= currentAuction.currentBid;
+                winningTeam.players.push(currentAuction.player);
+                showMessage(`¡${winningTeam.name} ha ganado la subasta por ${currentAuction.player.name} ${currentAuction.player.lastName}!`, 'success');
+            } else {
+                showMessage("La subasta terminó sin pujas. El jugador regresa a la piscina.", 'error');
+                playersPool.push(currentAuction.player);
+                shuffleArray(playersPool);
+            }
+            
+            const nextPlayer = playersPool.length > 0 ? playersPool.shift() : null;
+            const updatedAuction = nextPlayer ? {
+                player: nextPlayer,
+                currentBid: nextPlayer.value,
+                currentBidderId: null,
+                timer: 30,
+                auctionActive: true,
+                hintsUsed: 0
+            } : { auctionActive: false };
+
+            await updateState({
+                teams: teams,
+                playersPool: playersPool,
+                currentAuction: updatedAuction
+            });
+        }
+
+        // Timer Logic
+        async function handleTimerUpdate() {
+            const docRef = doc(db, stateDocPath);
+            const docSnap = await getDoc(docRef);
+            const gameState = docSnap.data();
+            if (!gameState || !gameState.currentAuction.auctionActive) return;
+
+            const updatedTimer = gameState.currentAuction.timer - 1;
+            if (updatedTimer >= 0) {
+                await updateState({ currentAuction: { ...gameState.currentAuction, timer: updatedTimer } });
+            } else {
+                await endAuction();
+            }
+        }
+        
+        function startFirestoreTimer() {
+            if (timerInterval) clearInterval(timerInterval);
+            timerInterval = setInterval(handleTimerUpdate, 1000);
+        }
+
+        // Funciones de renderizado
+        function updateUI(gameState) {
+            const { teams, playersPool, currentAuction } = gameState;
+
+            // Renderiza la lista de equipos y jugadores
+            const teamSelect = document.getElementById('team-select');
+            teamsListContainer.innerHTML = '';
+            teamSelect.innerHTML = `<option value="">Selecciona tu equipo</option>`;
+            teams.forEach(team => {
+                const option = document.createElement('option');
+                option.value = team.id;
+                option.textContent = team.name;
+                teamSelect.appendChild(option);
+
+                const teamCard = document.createElement('div');
+                teamCard.className = 'bg-gray-900 rounded-lg shadow-md p-6';
+                teamCard.innerHTML = `
+                    <h3 class="text-xl font-bold text-white">${team.name} <span class="text-sm font-normal text-gray-400">(${team.players.length}/22)</span></h3>
+                    <p class="text-sm text-gray-400 mb-4">Presupuesto: <span class="font-bold text-green-400">${formatCurrency(team.budget)}</span></p>
+                    <ul class="list-disc list-inside space-y-1 text-gray-300">
+                        ${team.players.length > 0 ? team.players.map(p => `<li>${p.name} ${p.lastName} (${p.position})</li>`).join('') : '<li>Sin jugadores aún.</li>'}
+                    </ul>
+                `;
+                teamsListContainer.appendChild(teamCard);
+            });
+
+            // Renderiza la UI de la subasta
+            if (currentAuction.auctionActive) {
+                startDraftBtn.classList.add('hidden');
+                auctionArea.classList.remove('hidden');
+                
+                const player = currentAuction.player;
+                const lettersToShow = 1 + (currentAuction.hintsUsed * 2);
+                const displayedFirstName = player.name.substring(0, lettersToShow);
+                const displayedLastName = player.lastName.substring(0, lettersToShow);
+                const dots = '...';
+
+                playerCard.innerHTML = `
+                    <div class="flex flex-col items-center">
+                        <div class="text-5xl font-bold text-white mb-2">
+                            ${displayedFirstName}${dots} ${displayedLastName}${dots}
+                        </div>
+                        <img src="${getFlagUrl(player.nationality)}" alt="${player.nationality} flag" class="w-16 h-12 rounded-md mb-2">
+                        <span class="text-gray-400 text-sm">${player.position}</span>
+                    </div>
+                `;
+                const currentBidderName = currentAuction.currentBidderId ? teams.find(t => t.id === currentAuction.currentBidderId)?.name : 'Nadie ha pujado aún';
+                bidInfo.innerHTML = `
+                    <h4 class="text-2xl font-bold text-white text-center">Puja Actual</h4>
+                    <span class="text-4xl font-extrabold text-green-400">${formatCurrency(currentAuction.currentBid)}</span>
+                    <p class="text-gray-400">Líder: ${currentBidderName}</p>
+                `;
+                document.getElementById('timer-display').textContent = `${currentAuction.timer}s`;
+                initialBidBtn.textContent = `Pujar ${formatCurrency(currentAuction.player.value)}`;
+                hintsLeftSpan.textContent = 2 - currentAuction.hintsUsed;
+                if (currentAuction.hintsUsed >= 2) {
+                    hintBtn.disabled = true;
+                }
+                
+                if (!timerInterval) {
+                    startFirestoreTimer();
+                }
+
+            } else {
+                auctionArea.classList.add('hidden');
+                if (teams.length > 0) {
+                    startDraftBtn.classList.remove('hidden');
+                }
+            }
+        }
+
+        function showMessage(message, type = 'success') {
+            messageBox.textContent = message;
+            messageBox.className = `p-4 rounded-lg mt-4 text-white ${type === 'success' ? 'bg-green-500' : 'bg-red-500'}`;
+            messageBox.classList.remove('hidden');
+            setTimeout(() => {
+                messageBox.classList.add('hidden');
+            }, 5000);
+        }
+
+        // Event Listeners
+        teamForm.addEventListener('submit', handleAddTeam);
+        startDraftBtn.addEventListener('click', startDraft);
+        bidButtons.addEventListener('click', handleBid);
+        hintBtn.addEventListener('click', handleHint);
+
+        // Utilidades
+        function formatCurrency(value) {
+            return new Intl.NumberFormat('es-CL', { style: 'currency', currency: 'CLP', maximumFractionDigits: 0 }).format(value);
+        }
+
+        function shuffleArray(array) {
+            for (let i = array.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [array[i], array[j]] = [array[j], array[i]];
+            }
+            return array;
+        }
+
+        function getFlagUrl(nationality) {
+            const flagMap = {
+                'ARG': 'https://flagcdn.com/w160/ar.png', 'BRA': 'https://flagcdn.com/w160/br.png', 'ENG': 'https://flagcdn.com/w160/gb-eng.png',
+                'ESP': 'https://flagcdn.com/w160/es.png', 'FRA': 'https://flagcdn.com/w160/fr.png', 'GER': 'https://flagcdn.com/w160/de.png',
+                'POR': 'https://flagcdn.com/w160/pt.png', 'BEL': 'https://flagcdn.com/w160/be.png', 'NED': 'https://flagcdn.com/w160/nl.png',
+                'ITA': 'https://flagcdn.com/w160/it.png', 'URU': 'https://flagcdn.com/w160/uy.png', 'CRO': 'https://flagcdn.com/w160/hr.png',
+                'SCO': 'https://flagcdn.com/w160/gb-sct.png', 'CAN': 'https://flagcdn.com/w160/ca.png', 'SUI': 'https://flagcdn.com/w160/ch.png',
+                'AUT': 'https://flagcdn.com/w160/at.png', 'SVK': 'https://flagcdn.com/w160/sk.png', 'NOR': 'https://flagcdn.com/w160/no.png',
+                'NGA': 'https://flagcdn.com/w160/ng.png', 'EGY': 'https://flagcdn.com/w160/eg.png', 'POL': 'https://flagcdn.com/w160/pl.png',
+                'GEO': 'https://flagcdn.com/w160/ge.png', 'KOR': 'https://flagcdn.com/w160/kr.png', 'SRB': 'https://flagcdn.com/w160/rs.png',
+                'SLO': 'https://flagcdn.com/w160/si.png', 'CMR': 'https://flagcdn.com/w160/cm.png', 'GHA': 'https://flagcdn.com/w160/gh.png',
+                'CIV': 'https://flagcdn.com/w160/ci.png', 'HUN': 'https://flagcdn.com/w160/hu.png',
+            };
+            return flagMap[nationality] || 'https://flagcdn.com/w160/un.png';
+        }
+    </script>
 </body>
 </html>
 
