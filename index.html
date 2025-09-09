@@ -3,494 +3,586 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Juego de Draft Multijugador</title>
+    <title>Draft de Subasta FC 24</title>
+    <!-- Incluye Tailwind CSS desde CDN -->
     <script src="https://cdn.tailwindcss.com"></script>
-    <script type="module">
-        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
-        import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-        import { getFirestore, doc, getDoc, setDoc, onSnapshot } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
-
-        // Global variables provided by the environment
-        let firebaseConfig, initialAuthToken, appId;
-        
-        let app, db, auth, userId;
-        let unsubscribe;
-        let gameRef;
-        let localPlayer = {};
-        let gameData = {};
-
-        const playersData = [
-            { id: 1, name: "Lionel Messi" },
-            { id: 2, name: "Cristiano Ronaldo" },
-            { id: 3, name: "Neymar Jr" },
-            { id: 4, name: "Kylian Mbappé" },
-            { id: 5, name: "Kevin De Bruyne" },
-            { id: 6, name: "Robert Lewandowski" },
-            { id: 7, name: "Virgil van Dijk" },
-            { id: 8, name: "Mohamed Salah" },
-            { id: 9, name: "Luka Modric" },
-            { id: 10, name: "Karim Benzema" }
-        ];
-
-        const state = {
-            gameStatus: 'lobby',
-            players: [],
-            hostId: null,
-            draftedPlayers: [],
-            availablePlayers: [...playersData],
-            currentPick: 0,
-            lobbyId: '',
-            numPlayers: 2
-        };
-
-        // --- UI Utility Functions ---
-        function showScreen(screenId) {
-            document.querySelectorAll('.screen').forEach(screen => {
-                screen.classList.add('hidden');
-            });
-            document.getElementById(screenId).classList.remove('hidden');
-        }
-
-        function showMessage(elementId, message, color = 'text-red-400') {
-            const el = document.getElementById(elementId);
-            el.textContent = message;
-            el.className = `${color} text-sm mt-4 text-center`;
-        }
-
-        // --- Gemini API Integration for Scouting Report ---
-        async function getScoutingReport(playerName) {
-            const reportModal = document.getElementById('scoutingReportModal');
-            const reportContent = document.getElementById('scoutingReportContent');
-            
-            reportContent.innerHTML = `
-                <div class="flex flex-col items-center justify-center py-10">
-                    <div class="loader-spinner"></div>
-                    <p class="text-gray-400 mt-4">Generando informe...</p>
-                </div>
-            `;
-            reportModal.classList.remove('hidden');
-
-            const systemPrompt = "Actúa como un experto en scouting de fútbol. Proporciona un informe conciso y objetivo sobre el jugador. Incluye su estilo de juego, sus puntos fuertes y una posible debilidad. La respuesta debe ser un solo párrafo y no debe mencionar la fuente.";
-            const userQuery = `Crea un informe de scouting para el jugador: ${playerName}`;
-            const apiKey = "";
-            const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-05-20:generateContent?key=${apiKey}`;
-
-            const payload = {
-                contents: [{ parts: [{ text: userQuery }] }],
-                tools: [{ "google_search": {} }],
-                systemInstruction: {
-                    parts: [{ text: systemPrompt }]
-                },
-            };
-
-            try {
-                const response = await fetch(apiUrl, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(payload)
-                });
-                const result = await response.json();
-                const text = result?.candidates?.[0]?.content?.parts?.[0]?.text || "No se pudo generar el informe. Inténtalo de nuevo.";
-                reportContent.textContent = text;
-            } catch (error) {
-                console.error("Error al llamar a la API de Gemini:", error);
-                reportContent.textContent = "Hubo un problema al generar el informe. Inténtalo más tarde.";
-            }
-        }
-        
-        function closeScoutingReportModal() {
-            document.getElementById('scoutingReportModal').classList.add('hidden');
-        }
-
-        // --- Lobby and Game Logic ---
-        async function createLobby() {
-            try {
-                const lobbyId = generateLobbyId();
-                const path = `artifacts/${appId}/public/data/lobbies/${lobbyId}`;
-                gameRef = doc(db, path);
-                
-                await setDoc(gameRef, {
-                    hostId: userId,
-                    players: [{ id: userId, name: localPlayer.name, team: 1 }],
-                    status: 'lobby',
-                    numPlayers: state.numPlayers,
-                    draftedPlayers: [],
-                    availablePlayers: playersData,
-                    currentPick: 0,
-                });
-                state.lobbyId = lobbyId;
-                state.hostId = userId;
-                localPlayer.team = 1;
-                setupRealtimeListener(gameRef);
-                document.getElementById('lobbyIdDisplay').textContent = lobbyId;
-                showScreen('lobbyScreen');
-            } catch (error) {
-                console.error("Error al crear el lobby:", error);
-                showMessage('errorMessage', 'Error al crear el lobby. Inténtalo de nuevo.');
-            }
-        }
-
-        async function joinLobby() {
-            try {
-                const lobbyId = document.getElementById('lobbyIdInput').value.toUpperCase();
-                if (!lobbyId) {
-                    showMessage('errorMessage', 'Por favor, ingresa un ID de lobby válido.');
-                    return;
-                }
-
-                const path = `artifacts/${appId}/public/data/lobbies/${lobbyId}`;
-                gameRef = doc(db, path);
-                const docSnap = await getDoc(gameRef);
-                
-                if (docSnap.exists()) {
-                    const data = docSnap.data();
-                    if (data.status === 'lobby') {
-                        if (data.players.length >= data.numPlayers) {
-                            showMessage('errorMessage', 'El lobby ya está lleno.');
-                            return;
-                        }
-                        const newPlayer = { id: userId, name: localPlayer.name, team: data.players.length + 1 };
-                        data.players.push(newPlayer);
-                        localPlayer.team = newPlayer.team;
-                        await setDoc(gameRef, data);
-                        state.lobbyId = lobbyId;
-                        state.hostId = data.hostId;
-                        setupRealtimeListener(gameRef);
-                        document.getElementById('lobbyIdDisplay').textContent = lobbyId;
-                        showScreen('lobbyScreen');
-                    } else {
-                        showMessage('errorMessage', 'Esta partida ya ha comenzado.');
-                    }
-                } else {
-                    showMessage('errorMessage', 'ID de lobby no encontrado.');
-                }
-            } catch (error) {
-                console.error("Error al unirse al lobby:", error);
-                showMessage('errorMessage', 'Error al unirse al lobby. Revisa el ID.');
-            }
-        }
-
-        function setupRealtimeListener(docRef) {
-            if (unsubscribe) {
-                unsubscribe();
-            }
-            unsubscribe = onSnapshot(docRef, (doc) => {
-                if (doc.exists()) {
-                    gameData = doc.data();
-                    updateUI();
-                } else {
-                    // Lobby was deleted or doesn't exist
-                    showScreen('welcomeScreen');
-                    showMessage('errorMessage', 'El lobby ya no existe. Intenta unirte a otra partida o crea una nueva.');
-                }
-            }, (error) => {
-                console.error("Error listening for document changes:", error);
-            });
-        }
-
-        function updateUI() {
-            // Update lobby screen
-            const playersList = document.getElementById('playersList');
-            if (playersList) {
-                playersList.innerHTML = gameData.players.map(p => `
-                    <div class="p-2 border border-gray-700 rounded-lg mb-2 bg-gray-700">
-                        <p class="text-sm">${p.name} (ID: <span class="text-xs text-blue-400">${p.id.substring(0, 8)}...</span>) - Equipo ${p.team}</p>
-                    </div>
-                `).join('');
-                
-                const isHost = gameData.hostId === userId;
-                const isLobbyFull = gameData.players.length === gameData.numPlayers;
-                document.getElementById('startDraftBtn').classList.toggle('hidden', !isHost || !isLobbyFull);
-                document.getElementById('waitingMessage').classList.toggle('hidden', isHost);
-                document.getElementById('playerCount').textContent = `${gameData.players.length} / ${gameData.numPlayers} jugadores`;
-            }
-            
-            // Update game screen
-            if (gameData.status === 'playing') {
-                showScreen('gameScreen');
-                const playersPickContainer = document.getElementById('players-pick');
-                const nextPlayerTurn = gameData.players.find(p => p.id === gameData.turn);
-                if (playersPickContainer) {
-                    playersPickContainer.textContent = `Turno de: ${nextPlayerTurn ? nextPlayerTurn.name : '...'}`;
-                }
-
-                const availableContainer = document.getElementById('available-players-container');
-                availableContainer.innerHTML = '';
-                gameData.availablePlayers.forEach(player => {
-                    const playerCard = createPlayerCard(player, true);
-                    availableContainer.appendChild(playerCard);
-                });
-
-                const draftedContainer = document.getElementById('drafted-players-container');
-                draftedContainer.innerHTML = '';
-                gameData.draftedPlayers.forEach(draftedPlayer => {
-                    const player = playersData.find(p => p.id === draftedPlayer.id);
-                    const playerInfo = gameData.players.find(p => p.id === draftedPlayer.playerId);
-                    if (player && playerInfo) {
-                      const playerCard = createPlayerCard(player, false, playerInfo.name);
-                      draftedContainer.appendChild(playerCard);
-                    }
-                });
-            } else if (gameData.status === 'lobby') {
-                showScreen('lobbyScreen');
-            }
-        }
-
-        function createPlayerCard(player, isAvailable, draftedBy = null) {
-            const card = document.createElement('div');
-            card.className = `p-4 border rounded-lg shadow-lg flex flex-col items-center justify-between transition-transform transform ${isAvailable ? 'bg-gray-700 hover:scale-105' : 'bg-gray-800'}`;
-            
-            const name = document.createElement('h3');
-            name.className = 'text-xl font-bold mb-2';
-            name.textContent = player.name;
-            
-            const team = document.createElement('p');
-            team.className = 'text-sm text-gray-400';
-            if (!isAvailable) {
-                team.textContent = `Seleccionado por: ${draftedBy}`;
-            }
-
-            const buttonContainer = document.createElement('div');
-            buttonContainer.className = 'flex space-x-2 mt-4';
-            
-            if (isAvailable) {
-                const draftButton = document.createElement('button');
-                draftButton.className = 'px-4 py-2 bg-blue-600 text-white font-semibold rounded-lg hover:bg-blue-700 transition-colors';
-                draftButton.textContent = 'Seleccionar';
-                draftButton.onclick = () => {
-                    if (gameData.turn === userId) {
-                        draftPlayer(player.id);
-                    } else {
-                        console.log("No es tu turno.");
-                    }
-                };
-                buttonContainer.appendChild(draftButton);
-            }
-
-            const reportButton = document.createElement('button');
-            reportButton.className = 'px-4 py-2 bg-purple-600 text-white font-semibold rounded-lg hover:bg-purple-700 transition-colors';
-            reportButton.textContent = '✨ Análisis';
-            reportButton.onclick = () => getScoutingReport(player.name);
-            buttonContainer.appendChild(reportButton);
-
-            card.appendChild(name);
-            card.appendChild(team);
-            card.appendChild(buttonContainer);
-            
-            return card;
-        }
-
-        async function draftPlayer(playerId) {
-            try {
-                if (gameRef && gameData.turn === userId) {
-                    const updatedAvailable = gameData.availablePlayers.filter(p => p.id !== playerId);
-                    const draftedPlayer = gameData.availablePlayers.find(p => p.id === playerId);
-                    const newDraftedList = [...gameData.draftedPlayers, {
-                        id: draftedPlayer.id,
-                        name: draftedPlayer.name,
-                        playerId: userId,
-                        pickNumber: gameData.currentPick
-                    }];
-                    
-                    const nextPlayerIndex = (gameData.players.findIndex(p => p.id === userId) + 1) % gameData.players.length;
-                    const nextPlayerId = gameData.players[nextPlayerIndex].id;
-
-                    await setDoc(gameRef, {
-                        ...gameData,
-                        availablePlayers: updatedAvailable,
-                        draftedPlayers: newDraftedList,
-                        currentPick: gameData.currentPick + 1,
-                        turn: nextPlayerId
-                    });
-                }
-            } catch (error) {
-                console.error("Error al realizar el draft:", error);
-            }
-        }
-
-        async function startGame() {
-            try {
-                if (gameRef && gameData.hostId === userId && gameData.players.length === gameData.numPlayers) {
-                    const firstPlayer = gameData.players[0].id;
-                    await setDoc(gameRef, { ...gameData, status: 'playing', turn: firstPlayer });
-                } else {
-                    showMessage('errorMessage', 'No puedes iniciar la partida. Asegúrate de que el lobby esté lleno.', 'text-yellow-400');
-                }
-            } catch (error) {
-                console.error("Error al iniciar la partida:", error);
-            }
-        }
-
-        function generateLobbyId() {
-            return Math.random().toString(36).substring(2, 8).toUpperCase();
-        }
-
-        document.addEventListener('DOMContentLoaded', async () => {
-            firebaseConfig = JSON.parse(typeof window.__firebase_config !== 'undefined' ? window.__firebase_config : '{}');
-            initialAuthToken = typeof window.__initial_auth_token !== 'undefined' ? window.__initial_auth_token : null;
-            appId = typeof window.__app_id !== 'undefined' ? window.__app_id : 'default-app-id';
-
-            app = initializeApp(firebaseConfig);
-            db = getFirestore(app);
-            auth = getAuth(app);
-
-            onAuthStateChanged(auth, async (user) => {
-                if (user) {
-                    userId = user.uid;
-                    document.getElementById('userIdDisplay').textContent = userId;
-                    const userNameInput = document.getElementById('userName');
-                    userNameInput.value = `Jugador ${Math.random().toString(36).substring(7, 9).toUpperCase()}`;
-                    localPlayer.name = userNameInput.value;
-                    userNameInput.addEventListener('change', (e) => { localPlayer.name = e.target.value; });
-                    showScreen('setupScreen');
-                } else {
-                    if (initialAuthToken) {
-                        try {
-                            await signInWithCustomToken(auth, initialAuthToken);
-                        } catch (error) {
-                            console.error("Error signing in with custom token:", error);
-                            await signInAnonymously(auth);
-                        }
-                    } else {
-                        await signInAnonymously(auth);
-                    }
-                }
-            });
-
-            document.getElementById('numPlayersSlider').addEventListener('input', (e) => {
-                state.numPlayers = parseInt(e.target.value);
-                document.getElementById('numPlayersValue').textContent = state.numPlayers;
-            });
-
-            document.getElementById('goToWelcomeBtn').addEventListener('click', () => {
-                showScreen('welcomeScreen');
-            });
-            
-            document.getElementById('createLobbyBtn').addEventListener('click', createLobby);
-            document.getElementById('joinLobbyBtn').addEventListener('click', joinLobby);
-            document.getElementById('startDraftBtn').addEventListener('click', startGame);
-        });
-
-    </script>
     <style>
         body {
+            background-color: #1a202c; /* Fondo oscuro */
+            color: #e2e8f0; /* Color de texto claro */
             font-family: 'Inter', sans-serif;
-            background-color: #1a202c;
-            color: #e2e8f0;
         }
-        .container {
-            max-width: 1000px;
-            margin: auto;
-        }
-        .loader-spinner {
-            border: 4px solid rgba(255, 255, 255, 0.2);
-            border-top: 4px solid #fff;
-            border-radius: 50%;
-            width: 40px;
-            height: 40px;
-            animation: spin 1s linear infinite;
-        }
-        @keyframes spin {
-            0% { transform: rotate(0deg); }
-            100% { transform: rotate(360deg); }
+        .flag-icon {
+            width: 48px; /* Tamaño de bandera más pequeño */
+            height: auto; /* Mantiene la proporción */
+            border-radius: 6px;
         }
     </style>
 </head>
-<body class="bg-gray-900 text-gray-100 min-h-screen p-4 flex flex-col items-center justify-center">
+<body class="flex items-center justify-center min-h-screen">
+    <!-- Botón de Volver, inicialmente oculto y fijo en la esquina superior izquierda -->
+    <button
+        id="back-btn-global"
+        class="fixed top-4 left-4 p-3 bg-gray-600 hover:bg-gray-700 text-white font-bold rounded-full transition duration-300 ease-in-out transform hover:scale-110 shadow-lg focus:outline-none focus:ring-4 focus:ring-gray-500 focus:ring-opacity-50 hidden"
+        aria-label="Volver a la pantalla anterior"
+    >
+        <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7" />
+        </svg>
+    </button>
 
-    <div id="loading" class="screen flex flex-col items-center justify-center">
-        <div class="loader-spinner"></div>
-        <p class="mt-4 text-gray-400">Cargando...</p>
-    </div>
+    <div class="bg-gray-800 p-8 rounded-2xl shadow-2xl max-w-lg w-full text-center">
+        <!-- Título de la aplicación -->
+        <h1 class="text-4xl font-extrabold mb-6 text-transparent bg-clip-text bg-gradient-to-r from-purple-400 to-pink-600">
+            Draft de Subasta FC 24
+        </h1>
 
-    <!-- Pantalla de Configuración -->
-    <div id="setupScreen" class="screen hidden w-full max-w-lg bg-gray-800 p-8 rounded-xl shadow-2xl space-y-6 text-center">
-        <h1 class="text-3xl font-extrabold text-blue-400 mb-2">Configuración de Partida</h1>
-        <p class="text-gray-400">Selecciona cuántos jugadores participarán en el draft.</p>
-        
-        <div class="flex flex-col items-center space-y-4">
-            <span id="numPlayersValue" class="text-6xl font-extrabold text-blue-300">2</span>
-            <input type="range" id="numPlayersSlider" min="2" max="10" value="2" class="w-full h-2 bg-gray-700 rounded-lg appearance-none cursor-pointer">
+        <!-- Sección de selección de jugadores -->
+        <div id="player-select-section">
+            <div class="mb-6">
+                <label for="num-players" class="block text-sm font-semibold mb-2">
+                    Selecciona la cantidad de jugadores:
+                </label>
+                <select id="num-players" class="w-full p-3 rounded-lg bg-gray-700 border border-gray-600 text-white focus:outline-none focus:border-blue-500 transition duration-200">
+                    <option value="2">2</option>
+                    <option value="3">3</option>
+                    <option value="4">4</option>
+                    <option value="5">5</option>
+                    <option value="6">6</option>
+                    <option value="7">7</option>
+                    <option value="8">8</option>
+                </select>
+            </div>
+            
+            <button
+                id="start-draft-btn"
+                class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-6 rounded-xl transition duration-300 ease-in-out transform hover:scale-105 shadow-lg focus:outline-none focus:ring-4 focus:ring-blue-500 focus:ring-opacity-50"
+            >
+                Empezar Subasta
+            </button>
         </div>
 
-        <button id="goToWelcomeBtn" class="w-full p-3 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-bold transition-all duration-300 transform hover:scale-105">Siguiente</button>
-    </div>
-
-    <!-- Pantalla de Bienvenida -->
-    <div id="welcomeScreen" class="screen hidden w-full max-w-lg bg-gray-800 p-8 rounded-xl shadow-2xl space-y-6">
-        <div class="text-center">
-            <h1 class="text-3xl font-extrabold text-blue-400 mb-2">Juego de Draft Multijugador</h1>
-            <p class="text-gray-400">Tu ID de usuario: <span id="userIdDisplay" class="text-sm font-mono text-blue-300"></span></p>
+        <!-- Sección de ingreso de nombres, inicialmente oculta -->
+        <div id="player-names-section" class="hidden">
+            <h2 class="text-2xl font-bold mb-4">Ingresa los Nombres</h2>
+            <div id="player-name-inputs" class="space-y-4">
+                <!-- Aquí se generarán los campos de texto -->
+            </div>
+            <button
+                id="confirm-names-btn"
+                class="w-full mt-6 bg-green-600 hover:bg-green-700 text-white font-bold py-3 px-6 rounded-xl transition duration-300 ease-in-out transform hover:scale-105 shadow-lg focus:outline-none focus:ring-4 focus:ring-green-500 focus:ring-opacity-50"
+            >
+                Confirmar Nombres
+            </button>
         </div>
 
-        <div class="flex flex-col space-y-4">
-            <input id="userName" type="text" placeholder="Tu Nombre" class="w-full p-3 rounded-lg bg-gray-700 border border-gray-600 text-gray-200 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500">
-            <button id="createLobbyBtn" class="w-full p-3 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-bold transition-all duration-300 transform hover:scale-105">Crear Partida</button>
-        </div>
-        
-        <div class="relative flex items-center py-5">
-            <div class="flex-grow border-t border-gray-600"></div>
-            <span class="flex-shrink mx-4 text-gray-400">o unirte a una existente</span>
-            <div class="flex-grow border-t border-gray-600"></div>
-        </div>
+        <!-- Sección de Subasta, inicialmente oculta -->
+        <div id="auction-section" class="hidden text-center">
+            <div id="auction-container" class="mb-6">
+                <h2 id="auction-timer" class="text-4xl font-extrabold text-white mb-4"></h2>
+                
+                <!-- Info del jugador en subasta -->
+                <div id="player-info" class="p-6 rounded-xl bg-gray-700 shadow-lg">
+                    <p id="player-name" class="text-3xl font-extrabold mb-4"></p>
+                    <div id="player-nationality" class="mb-4 flex flex-col items-center">
+                        <img id="flag-img" src="" alt="Bandera del país del jugador" class="flag-icon mb-2">
+                        <p id="player-country" class="text-xl font-bold"></p>
+                    </div>
+                    <p id="player-position" class="text-xl font-bold mb-2"></p>
+                    <p id="current-bid-text" class="text-2xl font-semibold text-green-400"></p>
+                    <p id="highest-bidder-text" class="text-sm text-gray-400 mt-2"></p>
+                </div>
+            </div>
 
-        <div class="flex flex-col space-y-4">
-            <input id="lobbyIdInput" type="text" placeholder="ID de Partida" class="w-full p-3 rounded-lg bg-gray-700 border border-gray-600 text-gray-200 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 uppercase">
-            <button id="joinLobbyBtn" class="w-full p-3 rounded-lg bg-green-600 hover:bg-green-700 text-white font-bold transition-all duration-300 transform hover:scale-105">Unirse a Partida</button>
-        </div>
+            <!-- Botones de puja -->
+            <div id="bid-buttons" class="space-y-4 mb-6">
+                <!-- Los botones de puja se renderizan aquí -->
+            </div>
 
-        <p id="errorMessage" class="text-red-400 text-sm mt-4 text-center"></p>
-    </div>
+            <!-- Botón de pista -->
+            <button
+                id="hint-btn"
+                class="w-full bg-yellow-500 hover:bg-yellow-600 text-gray-900 font-bold py-3 px-6 rounded-xl transition duration-300 ease-in-out transform hover:scale-105 shadow-lg focus:outline-none focus:ring-4 focus:ring-yellow-400 focus:ring-opacity-50 mb-6"
+            >
+                <span class="flex items-center justify-center">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.663 17h4.674M12 3v12.5M12 18h.01M16.5 10c0-2.828-2.172-5-5-5s-5 2.172-5 5c0 1.25.45 2.45 1.28 3.33L10 16.5V21h4v-4.5L15.22 13.33C15.54 12.9 16.5 11.5 16.5 10z"/>
+                    </svg>
+                    Pista
+                </span>
+            </button>
 
-    <!-- Pantalla de Lobby -->
-    <div id="lobbyScreen" class="screen hidden w-full max-w-lg bg-gray-800 p-8 rounded-xl shadow-2xl space-y-6">
-        <h2 class="text-2xl font-bold text-center">Lobby de Partida</h2>
-        <p id="playerCount" class="text-center text-gray-400"></p>
-        <p class="text-center text-gray-400">Comparte este ID con tus amigos:</p>
-        <p id="lobbyIdDisplay" class="text-center text-4xl font-extrabold text-blue-400 tracking-wider bg-gray-700 p-4 rounded-lg select-all">...</p>
-        
-        <div id="playersList" class="space-y-2 max-h-48 overflow-y-auto">
-            <!-- Los jugadores se renderizarán aquí -->
-        </div>
-        
-        <div class="flex justify-center mt-6">
-            <button id="startDraftBtn" class="p-3 px-6 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-bold transition-all duration-300 transform hover:scale-105 hidden">Comenzar Draft</button>
-        </div>
-        <p id="waitingMessage" class="text-center text-gray-400 mt-4">Esperando que el anfitrión comience el draft...</p>
-    </div>
-
-    <!-- Pantalla de Juego -->
-    <div id="gameScreen" class="screen hidden w-full container grid grid-cols-1 lg:grid-cols-2 gap-8 mt-8">
-
-        <!-- Columna de Jugadores Disponibles -->
-        <div class="bg-gray-800 p-6 rounded-xl shadow-xl">
-            <h2 class="text-3xl font-extrabold text-white mb-4 text-center">Jugadores Disponibles</h2>
-            <p id="players-pick" class="text-lg text-yellow-400 font-bold mb-4 text-center"></p>
-            <div id="available-players-container" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 max-h-[60vh] overflow-y-auto">
-                <!-- Los jugadores disponibles se renderizarán aquí -->
+            <!-- Inventarios de los jugadores -->
+            <div id="player-inventories">
+                <h3 class="text-lg font-semibold mb-2">Plantillas de los Jugadores:</h3>
+                <!-- Los inventarios se renderizan aquí -->
             </div>
         </div>
 
-        <!-- Columna de Jugadores Seleccionados -->
-        <div class="bg-gray-800 p-6 rounded-xl shadow-xl">
-            <h2 class="text-3xl font-extrabold text-white mb-4 text-center">Jugadores Seleccionados</h2>
-            <div id="drafted-players-container" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 max-h-[60vh] overflow-y-auto">
-                <!-- Los jugadores seleccionados se renderizarán aquí -->
-            </div>
+        <!-- Contenedor para mensajes de usuario -->
+        <div id="message-container" class="mt-6 p-4 rounded-lg text-sm transition-all duration-300 ease-in-out hidden">
+            <p id="message-text" class="font-semibold"></p>
         </div>
     </div>
 
-    <!-- Modal para el informe de scouting -->
-    <div id="scoutingReportModal" class="hidden fixed inset-0 bg-gray-900 bg-opacity-75 z-50 flex items-center justify-center p-4">
-        <div class="bg-gray-800 rounded-xl shadow-2xl p-6 w-full max-w-2xl">
-            <div class="flex justify-between items-center border-b border-gray-700 pb-3 mb-4">
-                <h3 class="text-2xl font-bold">Informe de Jugador</h3>
-                <button onclick="closeScoutingReportModal()" class="text-gray-400 hover:text-gray-200 text-2xl font-bold">&times;</button>
-            </div>
-            <div id="scoutingReportContent" class="text-gray-300 text-sm leading-relaxed max-h-96 overflow-y-auto">
-                <!-- El contenido del informe se cargará aquí -->
-            </div>
-        </div>
-    </div>
+    <script>
+        // Variables globales para el estado del juego
+        let players = [];
+        const INITIAL_BUDGET = 1500000000; // 1.500 millones
+        const BID_INCREMENT = 5000000; // 5 millones de incremento por puja
+        const BID_HINT_INCREMENT = 5000000; // 5 millones de incremento por pista
+        let itemPool = [
+            // Delanteros (30)
+            { name: 'Kylian Mbappé', value: 180000000, nationality: 'Francia', position: 'Delantero' }, { name: 'Erling Haaland', value: 180000000, nationality: 'Noruega', position: 'Delantero' },
+            { name: 'Vinícius Jr.', value: 150000000, nationality: 'Brasil', position: 'Delantero' }, { name: 'Jude Bellingham', value: 180000000, nationality: 'Inglaterra', position: 'Delantero' },
+            { name: 'Mohamed Salah', value: 65000000, nationality: 'Egipto', position: 'Delantero' }, { name: 'Robert Lewandowski', value: 40000000, nationality: 'Polonia', position: 'Delantero' },
+            { name: 'Harry Kane', value: 110000000, nationality: 'Inglaterra', position: 'Delantero' }, { name: 'Victor Osimhen', value: 110000000, nationality: 'Nigeria', position: 'Delantero' },
+            { name: 'Antoine Griezmann', value: 25000000, nationality: 'Francia', position: 'Delantero' }, { name: 'Heung-min Son', value: 50000000, nationality: 'Corea del Sur', position: 'Delantero' },
+            { name: 'Rafael Leão', value: 90000000, nationality: 'Portugal', position: 'Delantero' }, { name: 'Ousmane Dembélé', value: 60000000, nationality: 'Francia', position: 'Delantero' },
+            { name: 'Khvicha Kvaratskhelia', value: 85000000, nationality: 'Georgia', position: 'Delantero' }, { name: 'Federico Chiesa', value: 40000000, nationality: 'Italia', position: 'Delantero' },
+            { name: 'Phil Foden', value: 110000000, nationality: 'Inglaterra', position: 'Delantero' }, { name: 'Gabriel Martinelli', value: 80000000, nationality: 'Brasil', position: 'Delantero' },
+            { name: 'Marcus Rashford', value: 75000000, nationality: 'Inglaterra', position: 'Delantero' }, { name: 'Kingsley Coman', value: 65000000, nationality: 'Francia', position: 'Delantero' },
+            { name: 'Joao Félix', value: 40000000, nationality: 'Portugal', position: 'Delantero' }, { name: 'Lautaro Martínez', value: 110000000, nationality: 'Argentina', position: 'Delantero' },
+            { name: 'Dusan Vlahović', value: 60000000, nationality: 'Serbia', position: 'Delantero' }, { name: 'Luis Díaz', value: 75000000, nationality: 'Colombia', position: 'Delantero' },
+            { name: 'Neymar Jr.', value: 45000000, nationality: 'Brasil', position: 'Delantero' }, { name: 'Rodrygo', value: 100000000, nationality: 'Brasil', position: 'Delantero' },
+            { name: 'Julian Álvarez', value: 90000000, nationality: 'Argentina', position: 'Delantero' }, { name: 'Christopher Nkunku', value: 75000000, nationality: 'Francia', position: 'Delantero' },
+            { name: 'Victor Boniface', value: 40000000, nationality: 'Nigeria', position: 'Delantero' }, { name: 'Domenico Berardi', value: 20000000, nationality: 'Italia', position: 'Delantero' },
+            { name: 'Serge Gnabry', value: 45000000, nationality: 'Alemania', position: 'Delantero' }, { name: 'Lionel Messi', value: 35000000, nationality: 'Argentina', position: 'Delantero' },
+
+            // Mediocampistas (40)
+            { name: 'Kevin De Bruyne', value: 70000000, nationality: 'Bélgica', position: 'Mediocampista' }, { name: 'Rodri', value: 110000000, nationality: 'España', position: 'Mediocampista' },
+            { name: 'Bernardo Silva', value: 80000000, nationality: 'Portugal', position: 'Mediocampista' }, { name: 'Jamal Musiala', value: 110000000, nationality: 'Alemania', position: 'Mediocampista' },
+            { name: 'Frenkie De Jong', value: 75000000, nationality: 'Países Bajos', position: 'Mediocampista' }, { name: 'Bruno Fernandes', value: 70000000, nationality: 'Portugal', position: 'Mediocampista' },
+            { name: 'Pedri', value: 90000000, nationality: 'España', position: 'Mediocampista' }, { name: 'Federico Valverde', value: 100000000, nationality: 'Uruguay', position: 'Mediocampista' },
+            { name: 'Gavi', value: 90000000, nationality: 'España', position: 'Mediocampista' }, { name: 'Joshua Kimmich', value: 75000000, nationality: 'Alemania', position: 'Mediocampista' },
+            { name: 'Nicolò Barella', value: 75000000, nationality: 'Italia', position: 'Mediocampista' }, { name: 'Declan Rice', value: 110000000, nationality: 'Inglaterra', position: 'Mediocampista' },
+            { name: 'Martin Ødegaard', value: 95000000, nationality: 'Noruega', position: 'Mediocampista' }, { name: 'Alexis Mac Allister', value: 70000000, nationality: 'Argentina', position: 'Mediocampista' },
+            { name: 'Sandro Tonali', value: 50000000, nationality: 'Italia', position: 'Mediocampista' }, { name: 'Warren Zaïre-Emery', value: 60000000, nationality: 'Francia', position: 'Mediocampista' },
+            { name: 'Hakan Çalhanoğlu', value: 40000000, nationality: 'Turquía', position: 'Mediocampista' }, { name: 'Enzo Fernández', value: 80000000, nationality: 'Argentina', position: 'Mediocampista' },
+            { name: 'Florian Wirtz', value: 110000000, nationality: 'Alemania', position: 'Mediocampista' }, { name: 'Eduardo Camavinga', value: 90000000, nationality: 'Francia', position: 'Mediocampista' },
+            { name: 'Sergej Milinković-Savić', value: 50000000, nationality: 'Serbia', position: 'Mediocampista' }, { name: 'Marco Verratti', value: 35000000, nationality: 'Italia', position: 'Mediocampista' },
+            { name: 'Ilkay Gündoğan', value: 20000000, nationality: 'Alemania', position: 'Mediocampista' }, { name: 'Mateo Kovacic', value: 38000000, nationality: 'Croacia', position: 'Mediocampista' },
+            { name: 'Ismaël Bennacer', value: 40000000, nationality: 'Argelia', position: 'Mediocampista' }, { name: 'Sofyan Amrabat', value: 30000000, nationality: 'Marruecos', position: 'Mediocampista' },
+            { name: 'Manuel Locatelli', value: 30000000, nationality: 'Italia', position: 'Mediocampista' }, { name: 'Dani Olmo', value: 50000000, nationality: 'España', position: 'Mediocampista' },
+            { name: 'Harvey Elliott', value: 35000000, nationality: 'Inglaterra', position: 'Mediocampista' }, { name: 'Aurélien Tchouaméni', value: 90000000, nationality: 'Francia', position: 'Mediocampista' },
+            { name: 'Piotr Zieliński', value: 30000000, nationality: 'Polonia', position: 'Mediocampista' }, { name: 'Moussa Diaby', value: 55000000, nationality: 'Francia', position: 'Mediocampista' },
+            { name: 'Casemiro', value: 40000000, nationality: 'Brasil', position: 'Mediocampista' }, { name: 'Luka Modrić', value: 10000000, nationality: 'Croacia', position: 'Mediocampista' },
+            { name: 'Mason Mount', value: 45000000, nationality: 'Inglaterra', position: 'Mediocampista' }, { name: 'Thiago Alcântara', value: 15000000, nationality: 'España', position: 'Mediocampista' },
+            { name: 'Fabinho', value: 30000000, nationality: 'Brasil', position: 'Mediocampista' }, { name: 'Conor Gallagher', value: 40000000, nationality: 'Inglaterra', position: 'Mediocampista' },
+            { name: 'João Palhinha', value: 55000000, nationality: 'Portugal', position: 'Mediocampista' }, { name: 'James Maddison', value: 70000000, nationality: 'Inglaterra', position: 'Mediocampista' },
+
+            // Defensas (30)
+            { name: 'Virgil van Dijk', value: 40000000, nationality: 'Países Bajos', position: 'Defensa' }, { name: 'Rúben Dias', value: 80000000, nationality: 'Portugal', position: 'Defensa' },
+            { name: 'Ronald Araujo', value: 70000000, nationality: 'Uruguay', position: 'Defensa' }, { name: 'Matthijs de Ligt', value: 65000000, nationality: 'Países Bajos', position: 'Defensa' },
+            { name: 'Éder Militão', value: 70000000, nationality: 'Brasil', position: 'Defensa' }, { name: 'Kyle Walker', value: 13000000, nationality: 'Inglaterra', position: 'Defensa' },
+            { name: 'João Cancelo', value: 40000000, nationality: 'Portugal', position: 'Defensa' }, { name: 'Theo Hernández', value: 60000000, nationality: 'Francia', position: 'Defensa' },
+            { name: 'Alphonso Davies', value: 70000000, nationality: 'Canadá', position: 'Defensa' }, { name: 'Joško Gvardiol', value: 75000000, nationality: 'Croacia', position: 'Defensa' },
+            { name: 'William Saliba', value: 80000000, nationality: 'Francia', position: 'Defensa' }, { name: 'Raphaël Varane', value: 20000000, nationality: 'Francia', position: 'Defensa' },
+            { name: 'Lisandro Martínez', value: 45000000, nationality: 'Argentina', position: 'Defensa' }, { name: 'Milan Škriniar', value: 45000000, nationality: 'Eslovaquia', position: 'Defensa' },
+            { name: 'Alessandro Bastoni', value: 70000000, nationality: 'Italia', position: 'Defensa' }, { name: 'Dayot Upamecano', value: 60000000, nationality: 'Francia', position: 'Defensa' },
+            { name: 'Reece James', value: 50000000, nationality: 'Inglaterra', position: 'Defensa' }, { name: 'Trent Alexander-Arnold', value: 70000000, nationality: 'Inglaterra', position: 'Defensa' },
+            { name: 'Andrew Robertson', value: 35000000, nationality: 'Escocia', position: 'Defensa' }, { name: 'Benjamin Pavard', value: 35000000, nationality: 'Francia', position: 'Defensa' },
+            { name: 'Kim Min-jae', value: 60000000, nationality: 'Corea del Sur', position: 'Defensa' }, { name: 'Jules Koundé', value: 60000000, nationality: 'Francia', position: 'Defensa' },
+            { name: 'Lucas Hernández', value: 45000000, nationality: 'Francia', position: 'Defensa' }, { name: 'Antonio Rüdiger', value: 25000000, nationality: 'Alemania', position: 'Defensa' },
+            { name: 'Fikayo Tomori', value: 40000000, nationality: 'Inglaterra', position: 'Defensa' }, { name: 'Bremer', value: 40000000, nationality: 'Brasil', position: 'Defensa' },
+            { name: 'David Alaba', value: 40000000, nationality: 'Austria', position: 'Defensa' }, { name: 'Gabriel Magalhães', value: 65000000, nationality: 'Brasil', position: 'Defensa' },
+            { name: 'Marquinhos', value: 65000000, nationality: 'Brasil', position: 'Defensa' }, { name: 'Koulibaly', value: 25000000, nationality: 'Senegal', position: 'Defensa' },
+
+            // Arqueros (20)
+            { name: 'Thibaut Courtois', value: 45000000, nationality: 'Bélgica', position: 'Arquero' }, { name: 'Jan Oblak', value: 30000000, nationality: 'Eslovenia', position: 'Arquero' },
+            { name: 'Alisson Becker', value: 45000000, nationality: 'Brasil', position: 'Arquero' }, { name: 'Marc-André ter Stegen', value: 40000000, nationality: 'Alemania', position: 'Arquero' },
+            { name: 'Ederson', value: 45000000, nationality: 'Brasil', position: 'Arquero' }, { name: 'Mike Maignan', value: 40000000, nationality: 'Francia', position: 'Arquero' },
+            { name: 'Gianluigi Donnarumma', value: 45000000, nationality: 'Italia', position: 'Arquero' }, { name: 'André Onana', value: 35000000, nationality: 'Camerún', position: 'Arquero' },
+            { name: 'Wojciech Szczęsny', value: 15000000, nationality: 'Polonia', position: 'Arquero' }, { name: 'Aaron Ramsdale', value: 35000000, nationality: 'Inglaterra', position: 'Arquero' },
+            { name: 'David Raya', value: 35000000, nationality: 'España', position: 'Arquero' }, { name: 'Diogo Costa', value: 45000000, nationality: 'Portugal', position: 'Arquero' },
+            { name: 'Unai Simón', value: 25000000, nationality: 'España', position: 'Arquero' }, { name: 'Gregor Kobel', value: 40000000, nationality: 'Suiza', position: 'Arquero' },
+            { name: 'Péter Gulácsi', value: 5000000, nationality: 'Hungría', position: 'Arquero' }, { name: 'Kepa Arrizabalaga', value: 10000000, nationality: 'España', position: 'Arquero' },
+            { name: 'Nick Pope', value: 20000000, nationality: 'Inglaterra', position: 'Arquero' }, { name: 'Yassine Bounou', value: 12000000, nationality: 'Marruecos', position: 'Arquero' },
+            { name: 'Alphonse Areola', value: 8000000, nationality: 'Francia', position: 'Arquero' }, { name: 'Robert Sánchez', value: 25000000, nationality: 'España', position: 'Arquero' }
+        ];
+
+        let auctionQueue = [];
+        let currentAuctionPlayer = null;
+        let currentBid = 0;
+        let highestBidder = null;
+        let timer = 30;
+        let timerInterval = null;
+        let hintsUsed = 0; // Nuevo: contador de pistas usadas por jugador
+        let revealedFirstNameLength = 0;
+        let revealedLastNameLength = 0;
+        
+        // Función para obtener el código SVG de una bandera
+        function getFlagURL(country) {
+            const flagUrls = {
+                'Francia': 'https://upload.wikimedia.org/wikipedia/commons/c/c3/Flag_of_France.svg',
+                'Noruega': 'https://upload.wikimedia.org/wikipedia/commons/d/d9/Flag_of_Norway.svg',
+                'Brasil': 'https://upload.wikimedia.org/wikipedia/commons/0/05/Flag_of_Brazil.svg',
+                'Inglaterra': 'https://upload.wikimedia.org/wikipedia/commons/b/be/Flag_of_England.svg',
+                'Egipto': 'https://upload.wikimedia.org/wikipedia/commons/f/fe/Flag_of_Egypt.svg',
+                'Polonia': 'https://upload.wikimedia.org/wikipedia/commons/1/12/Flag_of_Poland.svg',
+                'Nigeria': 'https://upload.wikimedia.org/wikipedia/commons/7/79/Flag_of_Nigeria.svg',
+                'Corea del Sur': 'https://upload.wikimedia.org/wikipedia/commons/0/09/Flag_of_South_Korea.svg',
+                'Portugal': 'https://upload.wikimedia.org/wikipedia/commons/5/5c/Flag_of_Portugal.svg',
+                'Georgia': 'https://upload.wikimedia.org/wikipedia/commons/0/0f/Flag_of_Georgia.svg',
+                'Colombia': 'https://upload.wikimedia.org/wikipedia/commons/2/21/Flag_of_Colombia.svg',
+                'Argentina': 'https://upload.wikimedia.org/wikipedia/commons/1/1a/Flag_of_Argentina.svg',
+                'Serbia': 'https://upload.wikimedia.org/wikipedia/commons/f/ff/Flag_of_Serbia.svg',
+                'Italia': 'https://upload.wikimedia.org/wikipedia/commons/0/03/Flag_of_Italy.svg',
+                'Países Bajos': 'https://upload.wikimedia.org/wikipedia/commons/2/20/Flag_of_the_Netherlands.svg',
+                'Bélgica': 'https://upload.wikimedia.org/wikipedia/commons/6/65/Flag_of_Belgium.svg',
+                'Uruguay': 'https://upload.wikimedia.org/wikipedia/commons/f/fe/Flag_of_Uruguay.svg',
+                'Croacia': 'https://upload.wikimedia.org/wikipedia/commons/1/1b/Flag_of_Croatia.svg',
+                'Alemania': 'https://upload.wikimedia.org/wikipedia/commons/b/ba/Flag_of_Germany.svg',
+                'Turquía': 'https://upload.wikimedia.org/wikipedia/commons/b/b3/Flag_of_Turkey.svg',
+                'Argelia': 'https://upload.wikimedia.org/wikipedia/commons/7/7b/Flag_of_Algeria.svg',
+                'Marruecos': 'https://upload.wikimedia.org/wikipedia/commons/2/2c/Flag_of_Morocco.svg',
+                'Canadá': 'https://upload.wikimedia.org/wikipedia/commons/d/d9/Flag_of_Canada_%28Pantone%29.svg',
+                'Eslovaquia': 'https://upload.wikimedia.org/wikipedia/commons/e/e6/Flag_of_Slovakia.svg',
+                'Escocia': 'https://upload.wikimedia.org/wikipedia/commons/1/10/Flag_of_Scotland.svg',
+                'Austria': 'https://upload.wikimedia.org/wikipedia/commons/4/41/Flag_of_Austria.svg',
+                'Eslovenia': 'https://upload.wikimedia.org/wikipedia/commons/f/f0/Flag_of_Slovenia.svg',
+                'Camerún': 'https://upload.wikimedia.org/wikipedia/commons/4/4f/Flag_of_Cameroon.svg',
+                'Suiza': 'https://upload.wikimedia.org/wikipedia/commons/f/f3/Flag_of_Switzerland.svg',
+                'Hungría': 'https://upload.wikimedia.org/wikipedia/commons/c/c1/Flag_of_Hungary.svg',
+                'Senegal': 'https://upload.wikimedia.org/wikipedia/commons/f/fd/Flag_of_Senegal.svg',
+                'España': 'https://upload.wikimedia.org/wikipedia/commons/9/9a/Flag_of_Spain.svg'
+            };
+            return flagUrls[country] || 'https://upload.wikimedia.org/wikipedia/commons/a/a2/Flag_of_None.svg'; // Bandera de fallback
+        }
+        
+        function updateDisplayedName() {
+            if (!currentAuctionPlayer) return;
+
+            const name = currentAuctionPlayer.name;
+            const parts = name.split(' ');
+            
+            let displayedName = '';
+            
+            // Lógica para el primer nombre
+            displayedName += parts[0].substring(0, revealedFirstNameLength);
+            
+            // Lógica para el resto del nombre (apellido, etc.)
+            if (parts.length > 1) {
+                displayedName += ' ';
+                const lastName = parts.slice(1).join(' ');
+                displayedName += lastName.substring(0, revealedLastNameLength);
+            }
+            
+            // Reemplaza el resto de las letras con asteriscos
+            const hiddenLength = name.length - displayedName.length;
+            const hiddenPart = '*'.repeat(Math.max(0, hiddenLength));
+
+            document.getElementById('player-name').textContent = displayedName + hiddenPart;
+        }
+
+        const numberFormatter = new Intl.NumberFormat('es-ES', {
+            style: 'currency',
+            currency: 'EUR',
+            minimumFractionDigits: 0,
+            maximumFractionDigits: 0
+        });
+
+        // Función para mostrar mensajes de usuario
+        function showMessage(text, type) {
+            const container = document.getElementById('message-container');
+            const messageText = document.getElementById('message-text');
+            
+            let bgColor = '';
+            let textColor = '';
+            if (type === 'success') {
+                bgColor = 'bg-green-500';
+                textColor = 'text-green-100';
+            } else if (type === 'info') {
+                bgColor = 'bg-blue-500';
+                textColor = 'text-blue-100';
+            } else if (type === 'error') {
+                bgColor = 'bg-red-500';
+                textColor = 'text-red-100';
+            }
+
+            container.className = `mt-6 p-4 rounded-lg text-sm transition-all duration-300 ease-in-out ${bgColor} ${textColor}`;
+            messageText.innerHTML = text;
+            container.classList.remove('hidden');
+        }
+        
+        // Fisher-Yates shuffle
+        function shuffle(array) {
+            for (let i = array.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [array[i], array[j]] = [array[j], array[i]];
+            }
+        }
+
+        function renderAuctionScreen() {
+            const auctionTimerElement = document.getElementById('auction-timer');
+            const playerInfoDiv = document.getElementById('player-info');
+            const playerFlagImg = document.getElementById('flag-img');
+            const playerCountryElement = document.getElementById('player-country');
+            const playerPositionElement = document.getElementById('player-position');
+            const currentBidTextElement = document.getElementById('current-bid-text');
+            const highestBidderTextElement = document.getElementById('highest-bidder-text');
+            const bidButtonsContainer = document.getElementById('bid-buttons');
+            const playerInventoriesContainer = document.getElementById('player-inventories');
+            const hintBtn = document.getElementById('hint-btn');
+
+            if (!currentAuctionPlayer) {
+                 auctionTimerElement.textContent = "¡Fin del Draft!";
+                 playerInfoDiv.classList.add('hidden');
+                 bidButtonsContainer.innerHTML = '';
+                 hintBtn.classList.add('hidden'); // Ocultar el botón de pista
+                 return;
+            }
+
+            // Actualiza la info del jugador en subasta
+            updateDisplayedName(); // Actualiza el nombre que se muestra
+            playerFlagImg.src = getFlagURL(currentAuctionPlayer.nationality);
+            playerFlagImg.alt = `Bandera de ${currentAuctionPlayer.nationality}`;
+            playerCountryElement.textContent = currentAuctionPlayer.nationality;
+            playerPositionElement.textContent = currentAuctionPlayer.position;
+            currentBidTextElement.textContent = numberFormatter.format(currentBid);
+            highestBidderTextElement.textContent = highestBidder ? `Postor más alto: ${highestBidder.name}` : 'Nadie ha pujado aún';
+            
+            // Renderiza los botones de puja
+            bidButtonsContainer.innerHTML = '';
+            players.forEach((player, index) => {
+                const bidAmount = currentBid + BID_INCREMENT; // Siempre incrementa desde el valor actual
+                const button = document.createElement('button');
+                button.textContent = `Pujar ${numberFormatter.format(bidAmount)}`;
+                button.className = "w-full p-3 rounded-lg bg-green-600 hover:bg-green-700 text-white font-bold transition duration-300 ease-in-out transform hover:scale-105 shadow-md focus:outline-none focus:ring-2 focus:ring-green-500";
+                
+                if (player.budget < bidAmount) {
+                    button.disabled = true;
+                    button.textContent = `Sin fondos suficientes`;
+                    button.className = "w-full p-3 rounded-lg bg-gray-600 text-gray-400 cursor-not-allowed";
+                } else if (highestBidder && highestBidder.name === player.name) {
+                    button.disabled = true;
+                    button.textContent = `Ya eres el postor más alto`;
+                    button.className = "w-full p-3 rounded-lg bg-gray-600 text-gray-400 cursor-not-allowed";
+                }
+                else {
+                    button.addEventListener('click', () => handleBid(index, bidAmount));
+                }
+                bidButtonsContainer.appendChild(button);
+            });
+
+            // Lógica del botón de pista
+            hintBtn.classList.remove('hidden');
+            if (hintsUsed >= 2) {
+                hintBtn.disabled = true;
+                hintBtn.classList.add('cursor-not-allowed', 'opacity-50');
+            } else {
+                hintBtn.disabled = false;
+                hintBtn.classList.remove('cursor-not-allowed', 'opacity-50');
+            }
+
+            // Renderiza los inventarios de los jugadores
+            playerInventoriesContainer.innerHTML = '';
+            players.forEach(player => {
+                const playerDiv = document.createElement('div');
+                playerDiv.className = "mb-4 p-4 rounded-lg bg-gray-700 shadow-inner text-left";
+                playerDiv.innerHTML = `<h4 class="font-bold text-lg text-blue-300">${player.name}:</h4><p class="text-sm font-light text-gray-400">Presupuesto restante: <span class="text-white font-semibold">${numberFormatter.format(player.budget)}</span></p>`;
+                
+                const itemList = document.createElement('ul');
+                itemList.className = "mt-2 space-y-1 list-disc list-inside text-gray-300";
+                if (player.items.length === 0) {
+                    itemList.innerHTML = `<li>Aún no ha seleccionado jugadores.</li>`;
+                } else {
+                    player.items.forEach(item => {
+                        const li = document.createElement('li');
+                        li.textContent = item.name;
+                        itemList.appendChild(li);
+                    });
+                }
+                playerDiv.appendChild(itemList);
+                playerInventoriesContainer.appendChild(playerDiv);
+            });
+        }
+        
+        function startCountdown() {
+            timer = 30;
+            const timerElement = document.getElementById('auction-timer');
+            if (timerInterval) clearInterval(timerInterval);
+            timerInterval = setInterval(() => {
+                timer--;
+                timerElement.textContent = `Tiempo restante: ${timer}s`;
+                if (timer <= 0) {
+                    clearInterval(timerInterval);
+                    endAuction();
+                }
+            }, 1000);
+        }
+
+        function startNextAuction() {
+            if (auctionQueue.length === 0) {
+                showMessage("¡Fin del Draft!", 'success');
+                currentAuctionPlayer = null;
+                renderAuctionScreen();
+                return;
+            }
+            
+            // Restablece las variables de pista para el nuevo jugador
+            hintsUsed = 0;
+            revealedFirstNameLength = 0;
+            revealedLastNameLength = 0;
+            const nameParts = auctionQueue[0].name.split(' ');
+            revealedFirstNameLength = 1;
+            if (nameParts.length > 1) {
+                revealedLastNameLength = 1;
+            }
+
+            currentAuctionPlayer = auctionQueue.shift();
+            currentBid = currentAuctionPlayer.value;
+            highestBidder = null;
+            renderAuctionScreen();
+            startCountdown();
+        }
+
+        function endAuction() {
+            if (highestBidder) {
+                highestBidder.items.push(currentAuctionPlayer);
+                highestBidder.budget -= currentBid;
+                showMessage(`${highestBidder.name} ha ganado la subasta por ${currentAuctionPlayer.name} por ${numberFormatter.format(currentBid)}.`, 'success');
+            } else {
+                auctionQueue.push(currentAuctionPlayer);
+                shuffle(auctionQueue); // Vuelve a barajar el jugador
+                showMessage(`Nadie pujó por ${currentAuctionPlayer.name}. Regresa al fondo común.`, 'info');
+            }
+            startNextAuction();
+        }
+
+        function handleBid(playerIndex, amount) {
+            const bidder = players[playerIndex];
+            
+            // Check if player can afford the bid
+            if (bidder.budget >= amount) {
+                currentBid = amount;
+                highestBidder = bidder;
+                showMessage(`${bidder.name} ha pujado ${numberFormatter.format(amount)}.`, 'info');
+                // Reinicia el contador
+                clearInterval(timerInterval);
+                timer = 30;
+                startCountdown();
+            } else {
+                showMessage(`¡${bidder.name}, no tienes suficiente presupuesto para esta puja!`, 'error');
+            }
+            renderAuctionScreen();
+        }
+
+        // Lógica para el botón de pista
+        function handleHint() {
+            if (hintsUsed < 2) {
+                hintsUsed++;
+                currentBid += BID_HINT_INCREMENT;
+                
+                const nameParts = currentAuctionPlayer.name.split(' ');
+                
+                // Revela una letra del primer nombre
+                if (revealedFirstNameLength < nameParts[0].length) {
+                    revealedFirstNameLength++;
+                }
+                
+                // Revela una letra del último nombre
+                if (nameParts.length > 1 && revealedLastNameLength < nameParts[nameParts.length - 1].length) {
+                    revealedLastNameLength++;
+                }
+
+                showMessage(`Pista usada. El valor del jugador aumenta a ${numberFormatter.format(currentBid)}.`, 'info');
+                
+                // Reinicia el temporizador
+                clearInterval(timerInterval);
+                timer = 30;
+                startCountdown();
+                
+                // Llama a renderAuctionScreen para actualizar el precio del botón de puja
+                renderAuctionScreen();
+            }
+        }
+        
+        // Obtiene las secciones y botones
+        const playerSelectSection = document.getElementById('player-select-section');
+        const playerNamesSection = document.getElementById('player-names-section');
+        const auctionSection = document.getElementById('auction-section');
+        const numPlayersSelect = document.getElementById('num-players');
+        const startDraftBtn = document.getElementById('start-draft-btn');
+        const confirmNamesBtn = document.getElementById('confirm-names-btn');
+        const backBtnGlobal = document.getElementById('back-btn-global');
+        const playerNameInputsContainer = document.getElementById('player-name-inputs');
+        const hintBtn = document.getElementById('hint-btn');
+
+        // Evento para empezar el draft y mostrar campos de nombres
+        startDraftBtn.addEventListener('click', () => {
+            const numPlayers = parseInt(numPlayersSelect.value);
+            playerSelectSection.classList.add('hidden');
+            playerNamesSection.classList.remove('hidden');
+            backBtnGlobal.classList.remove('hidden');
+            
+            playerNameInputsContainer.innerHTML = '';
+            
+            for (let i = 1; i <= numPlayers; i++) {
+                const div = document.createElement('div');
+                div.innerHTML = `
+                    <label for="player-${i}" class="block text-left text-sm font-semibold mb-1">
+                        Nombre del Jugador ${i}:
+                    </label>
+                    <input type="text" id="player-${i}" placeholder="Escribe el nombre aquí" 
+                        class="w-full p-3 rounded-lg bg-gray-700 border border-gray-600 text-white focus:outline-none focus:border-blue-500" required />
+                `;
+                playerNameInputsContainer.appendChild(div);
+            }
+            
+            document.getElementById('message-container').classList.add('hidden');
+        });
+
+        // Evento para confirmar los nombres y empezar la subasta
+        confirmNamesBtn.addEventListener('click', () => {
+            const numPlayers = parseInt(numPlayersSelect.value);
+            const playerNames = [];
+            let allNamesEntered = true;
+
+            for (let i = 1; i <= numPlayers; i++) {
+                const input = document.getElementById(`player-${i}`);
+                if (input && input.value.trim() !== '') {
+                    playerNames.push(input.value.trim());
+                } else {
+                    allNamesEntered = false;
+                    break;
+                }
+            }
+
+            if (allNamesEntered) {
+                players = playerNames.map(name => ({ name, items: [], budget: INITIAL_BUDGET }));
+                
+                // Transiciona a la pantalla de subasta
+                playerNamesSection.classList.add('hidden');
+                auctionSection.classList.remove('hidden');
+                document.getElementById('message-container').classList.add('hidden');
+                
+                auctionQueue = [...itemPool];
+                shuffle(auctionQueue);
+                
+                startNextAuction();
+            } else {
+                showMessage('Por favor, ingresa el nombre de todos los jugadores.', 'error');
+            }
+        });
+
+        // Evento para el botón global de volver
+        backBtnGlobal.addEventListener('click', () => {
+            if (!auctionSection.classList.contains('hidden')) {
+                auctionSection.classList.add('hidden');
+                playerNamesSection.classList.remove('hidden');
+                clearInterval(timerInterval); // Detiene el temporizador
+            } 
+            else if (!playerNamesSection.classList.contains('hidden')) {
+                playerNamesSection.classList.add('hidden');
+                playerSelectSection.classList.remove('hidden');
+                backBtnGlobal.classList.add('hidden');
+            }
+            document.getElementById('message-container').classList.add('hidden');
+        });
+
+        // Evento del botón de pista
+        hintBtn.addEventListener('click', handleHint);
+    </script>
 </body>
 </html>
