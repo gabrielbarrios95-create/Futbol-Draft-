@@ -3,634 +3,730 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Simulador de Draft de Jugadores</title>
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
+    <title>Draft de Subasta FC 26 - V5.1 + IA</title>
+    <!-- Incluye Tailwind CSS desde CDN para diseño moderno -->
     <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <style>
-        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap');
-        body { font-family: 'Inter', sans-serif; }
-        .loading-spinner {
-            border-top-color: transparent;
-            -webkit-animation: spinner-border 0.75s linear infinite;
-            animation: spinner-border 0.75s linear infinite;
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Outfit:wght@600;800;950&display=swap');
+        body {
+            background-color: #0b0f19; /* Fondo oscuro premium */
+            color: #e2e8f0;
+            font-family: 'Inter', sans-serif;
         }
-        @keyframes spinner-border {
-            to { transform: rotate(360deg); }
+        .flag-icon {
+            width: 48px;
+            height: auto;
+            border-radius: 4px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.5);
+        }
+        .player-card {
+            background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%);
+            border: 1px solid #334155;
+        }
+        .ia-glow {
+            box-shadow: 0 0 15px rgba(99, 102, 241, 0.4);
         }
     </style>
 </head>
-<body class="bg-gray-800 font-sans leading-normal tracking-normal text-white">
-    <div id="loading-overlay" class="fixed inset-0 bg-gray-900 bg-opacity-75 z-50 flex items-center justify-center transition-opacity duration-300 ease-in-out">
-        <div class="flex flex-col items-center">
-            <div class="loading-spinner w-12 h-12 rounded-full border-4 border-white-500 border-solid"></div>
-            <p class="mt-4 text-white text-lg">Cargando...</p>
-        </div>
-    </div>
-    <div class="container mx-auto p-4 md:p-8">
-        <header class="text-center mb-8">
-            <h1 class="text-4xl font-extrabold text-white mb-2">Simulador de Draft de Jugadores</h1>
-            <p class="text-gray-400">Crea equipos y compite en un draft misterioso en tiempo real.</p>
-            <p id="user-info" class="text-xs text-gray-500 mt-2">ID de Usuario: <span id="user-id"></span></p>
-        </header>
+<body class="flex flex-col min-h-screen">
 
-        <div id="message-box" class="hidden text-center"></div>
-        
-        <!-- Controles para crear equipos -->
-        <div class="bg-gray-900 rounded-lg shadow-xl p-6 border border-gray-700 mb-8">
-            <h2 class="text-xl font-bold text-white mb-4">Crea tu equipo</h2>
-            <form id="add-team-form" class="flex flex-col md:flex-row gap-4">
-                <input type="text" id="new-team-name" required placeholder="Nombre del Equipo" class="flex-1 rounded-md bg-gray-700 text-white border-gray-600 shadow-sm focus:border-indigo-500 focus:ring focus:ring-indigo-500 focus:ring-opacity-50">
-                <button type="submit" class="py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-green-700 hover:bg-green-800 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-600 transition duration-300">
-                    Agregar Equipo
-                </button>
-            </form>
+    <!-- Header de la Aplicación -->
+    <header class="bg-slate-900 border-b border-slate-800 py-4 px-6 shadow-lg">
+        <div class="max-w-7xl mx-auto flex justify-between items-center">
+            <h1 class="text-2xl sm:text-3xl font-black text-transparent bg-clip-text bg-gradient-to-r from-yellow-400 via-orange-500 to-indigo-500 font-sans tracking-tight">
+                FC 26 DRAFT SUBASTAS
+            </h1>
+            <span class="text-xs font-bold text-slate-400 uppercase tracking-widest bg-slate-950 px-3 py-1.5 rounded-full border border-slate-800 flex items-center gap-2">
+                <i class="fa-solid fa-microchip text-indigo-400"></i> Gemini AI
+            </span>
         </div>
+    </header>
 
-        <!-- Botón para iniciar el draft -->
-        <div class="flex justify-center mt-6 mb-8">
-            <button id="start-draft-btn" class="hidden py-3 px-8 bg-blue-700 text-white font-bold text-lg rounded-lg shadow-lg hover:bg-blue-800 transition duration-300">
-                <i class="fas fa-play-circle mr-2"></i> Iniciar Draft
-            </button>
-        </div>
-        
-        <!-- Sección de la subasta -->
-        <div id="auction-area" class="hidden bg-gray-700 rounded-lg shadow-xl p-8 text-center border border-gray-600 mb-8">
-            <h2 class="text-3xl font-extrabold text-white mb-4">¡Subasta en curso!</h2>
-            <div id="timer-display" class="text-5xl font-extrabold text-red-400 mb-4"></div>
-            <div class="flex flex-col md:flex-row justify-center items-center md:space-x-8 space-y-4 md:space-y-0">
-                <div id="auction-player-card" class="bg-gray-900 p-6 rounded-lg shadow-md w-full max-w-sm">
-                    <!-- Player info will be rendered here -->
-                </div>
-                <div id="bid-info" class="bg-gray-900 p-6 rounded-lg shadow-md w-full max-w-sm">
-                    <!-- Bid info will be rendered here -->
-                </div>
-            </div>
+    <!-- Botón de Volver, inicialmente oculto y fijo en la esquina superior izquierda -->
+    <button
+        id="back-btn-global"
+        class="fixed top-20 left-4 p-3 bg-gray-700 hover:bg-gray-600 text-white font-bold rounded-full transition duration-300 ease-in-out transform hover:scale-110 shadow-lg focus:outline-none focus:ring-4 focus:ring-gray-500 focus:ring-opacity-50 hidden z-50"
+        aria-label="Volver a la pantalla anterior"
+    >
+        <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7" />
+        </svg>
+    </button>
+
+    <main class="flex-grow flex items-center justify-center p-4">
+        <div class="bg-gray-800 p-6 sm:p-8 rounded-2xl shadow-2xl max-w-xl w-full text-center my-8 border border-slate-700 relative overflow-hidden">
             
-            <div class="mt-8">
-                <label for="team-select" class="text-gray-300 font-medium mb-2 block">Selecciona tu equipo:</label>
-                <select id="team-select" class="w-full md:w-1/2 mx-auto mb-4 rounded-md bg-gray-800 text-white border-gray-700 shadow-sm focus:border-indigo-500 focus:ring focus:ring-indigo-500 focus:ring-opacity-50"></select>
+            <!-- Decoración sutil de fondo -->
+            <div class="absolute top-0 right-0 -mt-20 -mr-20 w-40 h-40 bg-indigo-600 rounded-full blur-3xl opacity-10 pointer-events-none"></div>
+
+            <!-- SECCIÓN 1: Selección de cantidad de participantes -->
+            <div id="player-select-section">
+                <div class="mb-6">
+                    <label for="num-players" class="block text-sm font-semibold mb-3 text-slate-300">
+                        Selecciona la cantidad de equipos participantes:
+                    </label>
+                    <select id="num-players" class="w-full p-3 rounded-lg bg-gray-700 border border-gray-600 text-white focus:outline-none focus:border-indigo-500 transition duration-200">
+                        <option value="2">2 Equipos</option>
+                        <option value="3">3 Equipos</option>
+                        <option value="4">4 Equipos</option>
+                        <option value="5">5 Equipos</option>
+                        <option value="6">6 Equipos</option>
+                        <option value="7">7 Equipos</option>
+                        <option value="8">8 Equipos</option>
+                    </select>
+                </div>
+                
+                <button
+                    id="start-draft-btn"
+                    class="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3.5 px-6 rounded-xl transition duration-300 ease-in-out transform hover:scale-105 shadow-lg focus:outline-none focus:ring-4 focus:ring-indigo-500 focus:ring-opacity-50"
+                >
+                    Empezar Subasta
+                </button>
             </div>
-            
-            <div id="bid-buttons" class="flex flex-col md:flex-row justify-center gap-4 mt-4">
-                <button id="bid-initial-btn" data-bid="initial" class="py-3 px-6 bg-green-500 text-black font-bold text-lg rounded-lg shadow-lg hover:bg-green-600 transition duration-300">
-                    Pujar
+
+            <!-- SECCIÓN 2: Ingreso de nombres de los equipos -->
+            <div id="player-names-section" class="hidden">
+                <h2 class="text-2xl font-bold mb-4 text-indigo-400">Ingresa los Nombres de los Equipos</h2>
+                <div id="player-name-inputs" class="space-y-4 max-h-72 overflow-y-auto pr-2">
+                    <!-- Aquí se generarán los campos de texto -->
+                </div>
+                <button
+                    id="confirm-names-btn"
+                    class="w-full mt-6 bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-3.5 px-6 rounded-xl transition duration-300 ease-in-out transform hover:scale-105 shadow-lg focus:outline-none focus:ring-4 focus:ring-emerald-500 focus:ring-opacity-50"
+                >
+                    Confirmar Nombres
                 </button>
-                <button id="bid-3m-btn" data-bid="3000000" class="py-3 px-6 bg-green-700 text-white font-bold text-lg rounded-lg shadow-lg hover:bg-green-800 transition duration-300">
-                    Pujar +3M
-                </button>
-                <button id="bid-8m-btn" data-bid="8000000" class="py-3 px-6 bg-green-900 text-white font-bold text-lg rounded-lg shadow-lg hover:bg-green-950 transition duration-300">
-                    Pujar +8M
-                </button>
-                <button id="hint-btn" class="py-3 px-6 bg-red-600 text-white font-bold text-lg rounded-lg shadow-lg hover:bg-red-700 transition duration-300 disabled:opacity-50 disabled:cursor-not-allowed">
-                    Pista (<span id="hints-left">2</span>)
-                </button>
+            </div>
+
+            <!-- SECCIÓN 3: Panel de Subasta Activa -->
+            <div id="auction-section" class="hidden text-center">
+                <div id="auction-container" class="mb-6">
+                    <div class="flex items-center justify-between mb-4 bg-slate-950 p-4 rounded-xl border border-slate-800 shadow-inner">
+                        <h2 id="auction-timer" class="text-3xl font-extrabold text-white"></h2>
+                        <!-- Botón de Pausa Sincronizada -->
+                        <button
+                            id="pause-btn"
+                            class="flex items-center justify-center bg-amber-600 hover:bg-amber-700 text-white font-bold py-2 px-4 rounded-lg transition duration-200"
+                        >
+                            <i class="fa-solid fa-pause mr-2"></i> Pausar
+                        </button>
+                    </div>
+                    
+                    <!-- Información del Jugador Misterioso -->
+                    <div id="player-info" class="p-6 rounded-xl player-card shadow-lg relative overflow-hidden">
+                        <p id="player-name" class="text-3xl font-black mb-4 tracking-wide text-white"></p>
+                        <div id="player-nationality" class="mb-4 flex flex-col items-center">
+                            <img id="flag-img" src="" alt="Bandera del país" class="flag-icon mb-2">
+                            <p id="player-country" class="text-sm font-bold text-slate-300"></p>
+                        </div>
+                        <p id="player-position" class="text-md font-bold mb-2 bg-indigo-500/10 text-indigo-400 py-1.5 px-4 rounded-full border border-indigo-500/20 inline-block"></p>
+                        <p id="current-bid-text" class="text-3xl font-black text-emerald-400 mt-4"></p>
+                        <p id="highest-bidder-text" class="text-xs text-gray-400 mt-2 font-medium"></p>
+
+                        <!-- Contenedor del Reporte de Ojeador IA -->
+                        <div id="scout-report" class="hidden mt-4 p-4 bg-indigo-900/40 rounded-lg text-sm text-indigo-200 border border-indigo-500/30 text-left leading-relaxed">
+                            <!-- El reporte IA aparecerá aquí -->
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Botones de Puja Independientes -->
+                <div id="bid-buttons" class="space-y-3 mb-6">
+                    <!-- Los botones de puja se renderizan aquí de forma dinámica -->
+                </div>
+
+                <!-- Botones de Acción (Pistas y Ojeador IA) -->
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-6">
+                    <!-- Botón de Pista -->
+                    <button
+                        id="hint-btn"
+                        class="w-full bg-yellow-500 hover:bg-yellow-600 text-gray-900 font-bold py-3 px-4 rounded-xl transition duration-300 ease-in-out transform hover:scale-105 shadow-lg focus:outline-none flex items-center justify-center gap-2"
+                    >
+                        <i class="fa-solid fa-magnifying-glass"></i> Comprar Pista (-$5M)
+                    </button>
+
+                    <!-- Botón de Ojeador IA -->
+                    <button
+                        id="scout-btn"
+                        class="w-full bg-gradient-to-r from-indigo-500 to-purple-600 hover:from-indigo-600 hover:to-purple-700 text-white font-bold py-3 px-4 rounded-xl transition duration-300 ease-in-out transform hover:scale-105 shadow-lg focus:outline-none flex items-center justify-center gap-2 ia-glow"
+                    >
+                        ✨ Ojeador IA
+                    </button>
+                </div>
+
+                <!-- Plantillas de los Equipos en Subasta -->
+                <div id="player-inventories" class="mt-8 border-t border-slate-700 pt-6">
+                    <h3 class="text-lg font-bold mb-4 text-slate-200 flex items-center justify-center gap-2">
+                        <i class="fa-solid fa-users text-indigo-400"></i> Plantillas de los Equipos:
+                    </h3>
+                    <!-- Los inventarios se renderizan aquí -->
+                </div>
+            </div>
+
+            <!-- Caja de Mensajería para Alertas de UI -->
+            <div id="message-container" class="mt-6 p-4 rounded-lg text-sm transition-all duration-300 ease-in-out hidden">
+                <p id="message-text" class="font-semibold"></p>
             </div>
         </div>
+    </main>
 
-        <!-- Listado de jugadores de cada equipo -->
-        <div class="bg-gray-900 rounded-lg shadow-xl p-6 border border-gray-700">
-            <h2 class="text-2xl font-bold text-white mb-4">Equipos y Jugadores</h2>
-            <div id="teams-list-container" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                <!-- Team cards will be rendered here -->
-            </div>
-        </div>
-    </div>
-    <script type="module">
-        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
-        import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-        import { getFirestore, doc, getDoc, addDoc, setDoc, updateDoc, onSnapshot, collection, query, where, getDocs, setLogLevel } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+    <!-- Footer -->
+    <footer class="bg-slate-950 border-t border-slate-900 py-4 px-6 text-center text-[10px] text-slate-600 font-semibold uppercase tracking-wider mt-auto">
+        Simulador Draft V5.1 &copy; 2026. Potenciado con ✨ Google Gemini API.
+    </footer>
 
-        // Firebase config and global variables
-        const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
-        const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : {};
-        const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
+    <script>
+        // --- API DE GEMINI E INFRAESTRUCTURA LLM ---
+        const apiKey = ""; // Injected by the environment
+        
+        async function fetchWithRetry(url, options, maxRetries = 5) {
+            let delay = 1000;
+            for (let i = 0; i < maxRetries; i++) {
+                try {
+                    const response = await fetch(url, options);
+                    if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+                    return await response.json();
+                } catch (error) {
+                    if (i === maxRetries - 1) throw error;
+                    await new Promise(resolve => setTimeout(resolve, delay));
+                    delay *= 2;
+                }
+            }
+        }
 
-        // --- Data de los jugadores ---
-        const playersData = [
-            // Defensas (30)
-            { name: 'Virgil', lastName: 'van Dijk', position: 'DFC', nationality: 'NED', value: 85000000 },
-            { name: 'Rúben', lastName: 'Dias', position: 'DFC', nationality: 'POR', value: 80000000 },
-            { name: 'Kyle', lastName: 'Walker', position: 'LD', nationality: 'ENG', value: 35000000 },
-            { name: 'Ronald', lastName: 'Araujo', position: 'DFC', nationality: 'URU', value: 70000000 },
-            { name: 'Jules', lastName: 'Koundé', position: 'DFC', nationality: 'FRA', value: 65000000 },
-            { name: 'Éder', lastName: 'Militão', position: 'DFC', nationality: 'BRA', value: 75000000 },
-            { name: 'Matthijs', lastName: 'de Ligt', position: 'DFC', nationality: 'NED', value: 70000000 },
-            { name: 'Marquinhos', lastName: '', position: 'DFC', nationality: 'BRA', value: 75000000 },
-            { name: 'Joško', lastName: 'Gvardiol', position: 'DFC', nationality: 'CRO', value: 75000000 },
-            { name: 'Antonio', lastName: 'Rüdiger', position: 'DFC', nationality: 'GER', value: 50000000 },
-            { name: 'William', lastName: 'Saliba', position: 'DFC', nationality: 'FRA', value: 70000000 },
-            { name: 'Theo', lastName: 'Hernández', position: 'LI', nationality: 'FRA', value: 60000000 },
-            { name: 'Alphonso', lastName: 'Davies', position: 'LI', nationality: 'CAN', value: 55000000 },
-            { name: 'Alejandro', lastName: 'Balde', position: 'LI', nationality: 'ESP', value: 50000000 },
-            { name: 'Manuel', lastName: 'Akanji', position: 'DFC', nationality: 'SUI', value: 45000000 },
-            { name: 'David', lastName: 'Alaba', position: 'DFC', nationality: 'AUT', value: 40000000 },
-            { name: 'Ben', lastName: 'White', position: 'LD', nationality: 'ENG', value: 55000000 },
-            { name: 'John', lastName: 'Stones', position: 'DFC', nationality: 'ENG', value: 45000000 },
-            { name: 'Lisandro', lastName: 'Martínez', position: 'DFC', nationality: 'ARG', value: 50000000 },
-            { name: 'Reece', lastName: 'James', position: 'LD', nationality: 'ENG', value: 60000000 },
-            { name: 'Andrew', lastName: 'Robertson', position: 'LI', nationality: 'SCO', value: 40000000 },
-            { name: 'Fikayo', lastName: 'Tomori', position: 'DFC', nationality: 'ENG', value: 40000000 },
-            { name: 'Milan', lastName: 'Škriniar', position: 'DFC', nationality: 'SVK', value: 45000000 },
-            { name: 'Raphaël', lastName: 'Varane', position: 'DFC', nationality: 'FRA', value: 35000000 },
-            { name: 'Dayot', lastName: 'Upamecano', position: 'DFC', nationality: 'FRA', value: 50000000 },
-            { name: 'Lucas', lastName: 'Hernández', position: 'LI', nationality: 'FRA', value: 45000000 },
-            { name: 'Nicolò', lastName: 'Barella', position: 'MC', nationality: 'ITA', value: 75000000 },
-            { name: 'Federico', lastName: 'Valverde', position: 'MCO', nationality: 'URU', value: 100000000 },
-            { name: 'Bernardo', lastName: 'Silva', position: 'MCO', nationality: 'POR', value: 80000000 },
-            { name: 'Jude', lastName: 'Bellingham', position: 'MCO', nationality: 'ENG', value: 180000000 },
+        async function callGemini(prompt) {
+            const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${apiKey}`;
+            const payload = {
+                contents: [{ parts: [{ text: prompt }] }]
+            };
+            try {
+                const result = await fetchWithRetry(url, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+                return result.candidates?.[0]?.content?.parts?.[0]?.text || "No se pudo generar el reporte en este momento.";
+            } catch (error) {
+                console.error("Gemini API Error:", error);
+                return "Error al conectar con la IA. La base de datos de ojeo no está disponible.";
+            }
+        }
 
-            // Mediocampistas (35)
-            { name: 'Kevin', lastName: 'De Bruyne', position: 'MCO', nationality: 'BEL', value: 70000000 },
-            { name: 'Rodri', lastName: '', position: 'MCD', nationality: 'ESP', value: 110000000 },
-            { name: 'Frenkie', lastName: 'de Jong', position: 'MC', nationality: 'NED', value: 80000000 },
-            { name: 'Joshua', lastName: 'Kimmich', position: 'MCD', nationality: 'GER', value: 75000000 },
-            { name: 'Toni', lastName: 'Kroos', position: 'MC', nationality: 'GER', value: 12000000 },
-            { name: 'Luka', lastName: 'Modrić', position: 'MC', nationality: 'CRO', value: 10000000 },
-            { name: 'Bruno', lastName: 'Fernandes', position: 'MCO', nationality: 'POR', value: 70000000 },
-            { name: 'Martin', lastName: 'Ødegaard', position: 'MCO', nationality: 'NOR', value: 90000000 },
-            { name: 'Casemiro', lastName: '', position: 'MCD', nationality: 'BRA', value: 40000000 },
-            { name: 'Declan', lastName: 'Rice', position: 'MCD', nationality: 'ENG', value: 110000000 },
-            { name: 'Pedri', lastName: '', position: 'MC', nationality: 'ESP', value: 90000000 },
-            { name: 'Gavi', lastName: '', position: 'MC', nationality: 'ESP', value: 70000000 },
-            { name: 'Ilkay', lastName: 'Gündoğan', position: 'MC', nationality: 'GER', value: 20000000 },
-            { name: 'Florian', lastName: 'Wirtz', position: 'MCO', nationality: 'GER', value: 100000000 },
-            { name: 'Jamal', lastName: 'Musiala', position: 'MCO', nationality: 'GER', value: 110000000 },
-            { name: 'Alexis', lastName: 'Mac Allister', position: 'MC', nationality: 'ARG', value: 70000000 },
-            { name: 'Enzo', lastName: 'Fernández', position: 'MC', nationality: 'ARG', value: 80000000 },
-            { name: 'João', lastName: 'Palhinha', position: 'MCD', nationality: 'POR', value: 55000000 },
-            { name: 'Sandro', lastName: 'Tonali', position: 'MCD', nationality: 'ITA', value: 50000000 },
-            { name: 'Aurélien', lastName: 'Tchouaméni', position: 'MCD', nationality: 'FRA', value: 80000000 },
-            { name: 'Mason', lastName: 'Mount', position: 'MCO', nationality: 'ENG', value: 45000000 },
-            { name: 'Sergej', lastName: 'Milinković-Savić', position: 'MC', nationality: 'SRB', value: 25000000 },
-            { name: 'Eduardo', lastName: 'Camavinga', position: 'MCD', nationality: 'FRA', value: 90000000 },
-            { name: 'Dani', lastName: 'Olmo', position: 'MCO', nationality: 'ESP', value: 50000000 },
-            { name: 'Federico', lastName: 'Chiesa', position: 'MD', nationality: 'ITA', value: 40000000 },
-            { name: 'Gavi', lastName: 'Paez', position: 'MC', nationality: 'ESP', value: 70000000 },
-            { name: 'Xavi', lastName: 'Simons', position: 'MCO', nationality: 'NED', value: 80000000 },
-            { name: 'Dominik', lastName: 'Szoboszlai', position: 'MCO', nationality: 'HUN', value: 75000000 },
-            { name: 'Matteo', lastName: 'Guendouzi', position: 'MC', nationality: 'FRA', value: 25000000 },
-            { name: 'Nicolò', lastName: 'Zaniolo', position: 'MCO', nationality: 'ITA', value: 25000000 },
-            { name: 'Youri', lastName: 'Tielemans', position: 'MC', nationality: 'BEL', value: 20000000 },
-            { name: 'Thomas', lastName: 'Partey', position: 'MCD', nationality: 'GHA', value: 30000000 },
-            { name: 'Franck', lastName: 'Kessié', position: 'MC', nationality: 'CIV', value: 25000000 },
-            { name: 'Giorgian', lastName: 'De Arrascaeta', position: 'MCO', nationality: 'URU', value: 15000000 },
-            { name: 'James', lastName: 'Maddison', position: 'MCO', nationality: 'ENG', value: 70000000 },
 
-            // Delanteros (25)
-            { name: 'Kylian', lastName: 'Mbappé', position: 'DC', nationality: 'FRA', value: 180000000 },
-            { name: 'Erling', lastName: 'Haaland', position: 'DC', nationality: 'NOR', value: 180000000 },
-            { name: 'Vinícius', lastName: 'Júnior', position: 'EI', nationality: 'BRA', value: 150000000 },
-            { name: 'Victor', lastName: 'Osimhen', position: 'DC', nationality: 'NGA', value: 120000000 },
-            { name: 'Mohamed', lastName: 'Salah', position: 'ED', nationality: 'EGY', value: 65000000 },
-            { name: 'Harry', lastName: 'Kane', position: 'DC', nationality: 'ENG', value: 100000000 },
-            { name: 'Robert', lastName: 'Lewandowski', position: 'DC', nationality: 'POL', value: 20000000 },
-            { name: 'Antoine', lastName: 'Griezmann', position: 'SD', nationality: 'FRA', value: 25000000 },
-            { name: 'Karim', lastName: 'Benzema', position: 'DC', nationality: 'FRA', value: 15000000 },
-            { name: 'Rafael', lastName: 'Leão', position: 'EI', nationality: 'POR', value: 90000000 },
-            { name: 'Bukayo', lastName: 'Saka', position: 'ED', nationality: 'ENG', value: 130000000 },
-            { name: 'Phil', lastName: 'Foden', position: 'MCO', nationality: 'ENG', value: 110000000 },
-            { name: 'Khvicha', lastName: 'Kvaratskhelia', position: 'EI', nationality: 'GEO', value: 85000000 },
-            { name: 'Federico', lastName: 'Chiesa', position: 'EI', nationality: 'ITA', value: 40000000 },
-            { name: 'Jack', lastName: 'Grealish', position: 'EI', nationality: 'ENG', value: 70000000 },
-            { name: 'Raphinha', lastName: '', position: 'ED', nationality: 'BRA', value: 50000000 },
-            { name: 'Diogo', lastName: 'Jota', position: 'DC', nationality: 'POR', value: 50000000 },
-            { name: 'Son', lastName: 'Heung-Min', position: 'EI', nationality: 'KOR', value: 50000000 },
-            { name: 'Marcus', lastName: 'Rashford', position: 'EI', nationality: 'ENG', value: 75000000 },
-            { name: 'Dusan', lastName: 'Vlahovic', position: 'DC', nationality: 'SRB', value: 60000000 },
-            { name: 'Gabriel', lastName: 'Jesus', position: 'DC', nationality: 'BRA', value: 70000000 },
-            { name: 'Christopher', lastName: 'Nkunku', position: 'MCO', nationality: 'FRA', value: 80000000 },
-            { name: 'Aleksandar', lastName: 'Mitrovic', position: 'DC', nationality: 'SRB', value: 28000000 },
-            { name: 'Álvaro', lastName: 'Morata', position: 'DC', nationality: 'ESP', value: 20000000 },
-            { name: 'Ferran', lastName: 'Torres', position: 'ED', nationality: 'ESP', value: 25000000 },
+        // --- Variables globales para el estado del juego ---
+        let players = [];
+        const INITIAL_BUDGET = 1500000000; // 1.500 millones
+        const BID_INCREMENT = 5000000; // 5 millones de incremento por puja
+        const HINT_COST = 5000000; // Costo de la pista en el presupuesto
+        
+        // --- Base de Datos FC 26 ---
+        let itemPool = [
+            // Porteros
+            { name: 'Thibaut Courtois', value: 45000000, nationality: 'Bélgica', position: 'Portero' },
+            { name: 'Jan Oblak', value: 30000000, nationality: 'Eslovenia', position: 'Portero' },
+            { name: 'Alisson Becker', value: 35000000, nationality: 'Brasil', position: 'Portero' },
+            { name: 'Marc-André ter Stegen', value: 35000000, nationality: 'Alemania', position: 'Portero' },
+            { name: 'Emiliano Martínez', value: 28000000, nationality: 'Argentina', position: 'Portero' },
 
-            // Arqueros (15)
-            { name: 'Thibaut', lastName: 'Courtois', position: 'POR', nationality: 'BEL', value: 35000000 },
-            { name: 'Alisson', lastName: 'Becker', position: 'POR', nationality: 'BRA', value: 35000000 },
-            { name: 'Ederson', lastName: 'Moraes', position: 'POR', nationality: 'BRA', value: 40000000 },
-            { name: 'Marc-André', lastName: 'ter Stegen', position: 'POR', nationality: 'GER', value: 35000000 },
-            { name: 'Jan', lastName: 'Oblak', position: 'POR', nationality: 'SLO', value: 30000000 },
-            { name: 'Manuel', lastName: 'Neuer', position: 'POR', nationality: 'GER', value: 7000000 },
-            { name: 'Gianluigi', lastName: 'Donnarumma', position: 'POR', nationality: 'ITA', value: 45000000 },
-            { name: 'Mike', lastName: 'Maignan', position: 'POR', nationality: 'FRA', value: 45000000 },
-            { name: 'André', lastName: 'Onana', position: 'POR', nationality: 'CMR', value: 40000000 },
-            { name: 'Aaron', lastName: 'Ramsdale', position: 'POR', nationality: 'ENG', value: 38000000 },
-            { name: 'Diogo', lastName: 'Costa', position: 'POR', nationality: 'POR', value: 45000000 },
-            { name: 'Gregor', lastName: 'Kobel', position: 'POR', nationality: 'SUI', value: 40000000 },
-            { name: 'Álex', lastName: 'Remiro', position: 'POR', nationality: 'ESP', value: 25000000 },
-            { name: 'David', lastName: 'Raya', position: 'POR', nationality: 'ESP', value: 35000000 },
-            { name: 'Wojciech', lastName: 'Szczesny', position: 'POR', nationality: 'POL', value: 15000000 }
+            // Defensas 
+            { name: 'Kyle Walker', value: 13000000, nationality: 'Inglaterra', position: 'Defensa Derecho' },
+            { name: 'Trent Alexander-Arnold', value: 70000000, nationality: 'Inglaterra', position: 'Defensa Derecho' },
+            { name: 'Theo Hernández', value: 60000000, nationality: 'Francia', position: 'Defensa Izquierdo' },
+            { name: 'Alphonso Davies', value: 50000000, nationality: 'Canadá', position: 'Defensa Izquierdo' },
+            { name: 'Virgil van Dijk', value: 40000000, nationality: 'Países Bajos', position: 'Defensa Central' },
+            { name: 'Rúben Dias', value: 80000000, nationality: 'Portugal', position: 'Defensa Central' },
+            { name: 'Ronald Araujo', value: 70000000, nationality: 'Uruguay', position: 'Defensa Central' },
+            { name: 'Éder Militão', value: 70000000, nationality: 'Brasil', position: 'Defensa Central' },
+
+            // Mediocampistas
+            { name: 'Jude Bellingham', value: 180000000, nationality: 'Inglaterra', position: 'Mediocampista' },
+            { name: 'Rodri', value: 110000000, nationality: 'España', position: 'Mediocampista' },
+            { name: 'Kevin De Bruyne', value: 70000000, nationality: 'Bélgica', position: 'Mediocampista' },
+            { name: 'Florian Wirtz', value: 110000000, nationality: 'Alemania', position: 'Mediocampista' },
+            { name: 'Federico Valverde', value: 100000000, nationality: 'Uruguay', position: 'Mediocampista' },
+            { name: 'Pedri', value: 80000000, nationality: 'España', position: 'Mediocampista' },
+            { name: 'Enzo Fernández', value: 80000000, nationality: 'Argentina', position: 'Mediocampista' },
+            { name: 'Nicolò Barella', value: 75000000, nationality: 'Italia', position: 'Mediocampista' },
+
+            // Delanteros
+            { name: 'Kylian Mbappé', value: 180000000, nationality: 'Francia', position: 'Delantero' },
+            { name: 'Erling Haaland', value: 180000000, nationality: 'Noruega', position: 'Delantero' },
+            { name: 'Vinícius Júnior', value: 150000000, nationality: 'Brasil', position: 'Delantero' },
+            { name: 'Bukayo Saka', value: 130000000, nationality: 'Inglaterra', position: 'Delantero' },
+            { name: 'Lautaro Martínez', value: 110000000, nationality: 'Argentina', position: 'Delantero' },
+            { name: 'Antoine Griezmann', value: 25000000, nationality: 'Francia', position: 'Delantero' },
+            { name: 'Heung-min Son', value: 50000000, nationality: 'Corea del Sur', position: 'Delantero' },
+            { name: 'Lamine Yamal', value: 75000000, nationality: 'España', position: 'Delantero' }
         ];
 
-        // UI elements
-        const loadingOverlay = document.getElementById('loading-overlay');
-        const teamForm = document.getElementById('add-team-form');
-        const teamNameInput = document.getElementById('new-team-name');
-        const startDraftBtn = document.getElementById('start-draft-btn');
-        const auctionArea = document.getElementById('auction-area');
-        const playerCard = document.getElementById('auction-player-card');
-        const bidInfo = document.getElementById('bid-info');
-        const bidButtons = document.getElementById('bid-buttons');
-        const teamsListContainer = document.getElementById('teams-list-container');
-        const messageBox = document.getElementById('message-box');
-        const hintBtn = document.getElementById('hint-btn');
-        const hintsLeftSpan = document.getElementById('hints-left');
-        const initialBidBtn = document.getElementById('bid-initial-btn');
-        const teamSelect = document.getElementById('team-select');
-        const userIdSpan = document.getElementById('user-id');
+        let auctionQueue = [];
+        let currentAuctionPlayer = null;
+        let currentBid = 0;
+        let highestBidder = null;
+        let timer = 30;
+        let timerInterval = null;
+        let isPaused = false; 
+        let hintsUsed = 0; 
+        let revealedFirstNameLength = 0;
+        let revealedLastNameLength = 0;
 
-        // State variables
-        let app, db, auth;
-        let userId = null;
-        let teams = [];
-        let currentAuction = {
-            player: null,
-            currentBid: 0,
-            currentBidderId: null,
-            timer: 30,
-            interval: null,
-            hintsUsed: 0,
-        };
-        const DRAFT_STATE_DOC_ID = 'draftState';
-        const PLAYERS_POOL_DOC_ID = 'playersPool';
-
-        // Event Listeners
-        window.onload = async () => {
-            setLogLevel('debug');
-            initializeApp(firebaseConfig);
-            auth = getAuth();
-            db = getFirestore();
-
-            onAuthStateChanged(auth, async (user) => {
-                if (user) {
-                    userId = user.uid;
-                    userIdSpan.textContent = userId;
-                    // Listen to all teams in the public collection
-                    onSnapshot(collection(db, `artifacts/${appId}/public/data/teams`), (snapshot) => {
-                        teams = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-                        renderTeamsList();
-                        checkDraftReadiness();
-                    });
-
-                    // Listen to the shared draft state
-                    onSnapshot(doc(db, `artifacts/${appId}/public/data/draft`, DRAFT_STATE_DOC_ID), (docSnap) => {
-                        if (docSnap.exists()) {
-                            const data = docSnap.data();
-                            if (JSON.stringify(data) !== JSON.stringify(currentAuction)) {
-                                currentAuction = data;
-                                renderAuctionUI();
-                                if (currentAuction.timer > 0) {
-                                    startTimer();
-                                } else {
-                                    clearInterval(currentAuction.interval);
-                                }
-                            }
-                        } else {
-                            // No draft state exists, reset UI
-                            auctionArea.classList.add('hidden');
-                        }
-                    });
-
-                    loadingOverlay.classList.add('hidden');
-                }
-            });
-
-            if (initialAuthToken) {
-                try {
-                    await signInWithCustomToken(auth, initialAuthToken);
-                } catch (e) {
-                    console.error("Firebase Auth Error:", e);
-                    await signInAnonymously(auth);
-                }
-            } else {
-                await signInAnonymously(auth);
-            }
-        };
-
-        teamForm.addEventListener('submit', handleAddTeam);
-        startDraftBtn.addEventListener('click', startDraft);
-        bidButtons.addEventListener('click', handleBid);
-        hintBtn.addEventListener('click', handleHint);
-
-        // Funciones principales
-        async function handleAddTeam(event) {
-            event.preventDefault();
-            const teamName = teamNameInput.value.trim();
-            if (!teamName) {
-                showMessage("Por favor, introduce un nombre para el equipo.", 'error');
-                return;
-            }
-
-            const teamExists = teams.find(t => t.name.toLowerCase() === teamName.toLowerCase());
-            if (teamExists) {
-                showMessage("Este nombre de equipo ya existe.", 'error');
-                return;
-            }
-
-            const newTeam = {
-                name: teamName,
-                ownerId: userId,
-                players: [],
-                budget: 1500000000,
+        function getFlagURL(country) {
+            const flagUrls = {
+                'Francia': 'https://upload.wikimedia.org/wikipedia/commons/c/c3/Flag_of_France.svg',
+                'Noruega': 'https://upload.wikimedia.org/wikipedia/commons/d/d9/Flag_of_Norway.svg',
+                'Brasil': 'https://upload.wikimedia.org/wikipedia/commons/0/05/Flag_of_Brazil.svg',
+                'Inglaterra': 'https://upload.wikimedia.org/wikipedia/commons/b/be/Flag_of_England.svg',
+                'Egipto': 'https://upload.wikimedia.org/wikipedia/commons/f/fe/Flag_of_Egypt.svg',
+                'Polonia': 'https://upload.wikimedia.org/wikipedia/commons/1/12/Flag_of_Poland.svg',
+                'Nigeria': 'https://upload.wikimedia.org/wikipedia/commons/7/79/Flag_of_Nigeria.svg',
+                'Corea del Sur': 'https://upload.wikimedia.org/wikipedia/commons/0/09/Flag_of_South_Korea.svg',
+                'Portugal': 'https://upload.wikimedia.org/wikipedia/commons/5/5c/Flag_of_Portugal.svg',
+                'Georgia': 'https://upload.wikimedia.org/wikipedia/commons/0/0f/Flag_of_Georgia.svg',
+                'Colombia': 'https://upload.wikimedia.org/wikipedia/commons/2/21/Flag_of_Colombia.svg',
+                'Argentina': 'https://upload.wikimedia.org/wikipedia/commons/1/1a/Flag_of_Argentina.svg',
+                'Serbia': 'https://upload.wikimedia.org/wikipedia/commons/f/ff/Flag_of_Serbia.svg',
+                'Italia': 'https://upload.wikimedia.org/wikipedia/commons/0/03/Flag_of_Italy.svg',
+                'Países Bajos': 'https://upload.wikimedia.org/wikipedia/commons/2/20/Flag_of_the_Netherlands.svg',
+                'Bélgica': 'https://upload.wikimedia.org/wikipedia/commons/6/65/Flag_of_Belgium.svg',
+                'Uruguay': 'https://upload.wikimedia.org/wikipedia/commons/f/fe/Flag_of_Uruguay.svg',
+                'Croacia': 'https://upload.wikimedia.org/wikipedia/commons/1/1b/Flag_of_Croatia.svg',
+                'Alemania': 'https://upload.wikimedia.org/wikipedia/commons/b/ba/Flag_of_Germany.svg',
+                'Turquía': 'https://upload.wikimedia.org/wikipedia/commons/b/b3/Flag_of_Turkey.svg',
+                'Argelia': 'https://upload.wikimedia.org/wikipedia/commons/7/7b/Flag_of_Algeria.svg',
+                'Marruecos': 'https://upload.wikimedia.org/wikipedia/commons/2/2c/Flag_of_Morocco.svg',
+                'Canadá': 'https://upload.wikimedia.org/wikipedia/commons/d/d9/Flag_of_Canada_%28Pantone%29.svg',
+                'Eslovaquia': 'https://upload.wikimedia.org/wikipedia/commons/e/e6/Flag_of_Slovakia.svg',
+                'Escocia': 'https://upload.wikimedia.org/wikipedia/commons/1/10/Flag_of_Scotland.svg',
+                'Austria': 'https://upload.wikimedia.org/wikipedia/commons/4/41/Flag_of_Austria.svg',
+                'Eslovenia': 'https://upload.wikimedia.org/wikipedia/commons/f/f0/Flag_of_Slovenia.svg',
+                'Camerún': 'https://upload.wikimedia.org/wikipedia/commons/4/4f/Flag_of_Cameroon.svg',
+                'Suiza': 'https://upload.wikimedia.org/wikipedia/commons/f/f3/Flag_of_Switzerland.svg',
+                'Hungría': 'https://upload.wikimedia.org/wikipedia/commons/c/c1/Flag_of_Hungary.svg',
+                'Senegal': 'https://upload.wikimedia.org/wikipedia/commons/f/fd/Flag_of_Senegal.svg',
+                'España': 'https://upload.wikimedia.org/wikipedia/commons/9/9a/Flag_of_Spain.svg'
             };
-
-            try {
-                await addDoc(collection(db, `artifacts/${appId}/public/data/teams`), newTeam);
-                teamNameInput.value = '';
-                showMessage(`Equipo "${teamName}" agregado con éxito.`);
-            } catch (e) {
-                console.error("Error adding team:", e);
-                showMessage("Error al agregar el equipo.", 'error');
-            }
+            return flagUrls[country] || 'https://upload.wikimedia.org/wikipedia/commons/a/a2/Flag_of_None.svg'; 
         }
 
-        async function startDraft() {
-            if (teams.length < 1) {
-                showMessage("Debes crear al menos un equipo para iniciar el draft.", 'error');
-                return;
-            }
-            startDraftBtn.classList.add('hidden');
-            auctionArea.classList.remove('hidden');
+        function updateDisplayedName() {
+            if (!currentAuctionPlayer) return;
 
-            try {
-                // Shuffle players and create initial pool
-                const playersPool = shuffleArray(playersData);
-                await setDoc(doc(db, `artifacts/${appId}/public/data/draft`, PLAYERS_POOL_DOC_ID), { players: playersPool });
-                
-                await nextAuction();
-            } catch (e) {
-                console.error("Error starting draft:", e);
-                showMessage("Error al iniciar el draft.", 'error');
-            }
-        }
-
-        async function nextAuction() {
-            try {
-                const poolDoc = await getDoc(doc(db, `artifacts/${appId}/public/data/draft`, PLAYERS_POOL_DOC_ID));
-                const playersPool = poolDoc.data()?.players || [];
-                
-                if (playersPool.length === 0 || teams.every(team => team.players.length >= 22)) {
-                    showMessage("El draft ha terminado.", 'success');
-                    await setDoc(doc(db, `artifacts/${appId}/public/data/draft`, DRAFT_STATE_DOC_ID), { status: 'finished' });
-                    return;
-                }
-
-                const nextPlayer = playersPool.shift();
-                await setDoc(doc(db, `artifacts/${appId}/public/data/draft`, PLAYERS_POOL_DOC_ID), { players: playersPool });
-                
-                const newAuctionState = {
-                    player: nextPlayer,
-                    currentBid: nextPlayer.value,
-                    currentBidderId: null,
-                    timer: 30,
-                    hintsUsed: 0,
-                    lettersToShow: 1,
-                };
-                await setDoc(doc(db, `artifacts/${appId}/public/data/draft`, DRAFT_STATE_DOC_ID), newAuctionState);
-            } catch (e) {
-                console.error("Error moving to next auction:", e);
-                showMessage("Error al pasar a la siguiente subasta.", 'error');
-            }
-        }
-
-        async function handleBid(event) {
-            const button = event.target.closest('button');
-            if (!button || button.id === 'hint-btn') return;
+            const name = currentAuctionPlayer.name;
+            const parts = name.split(' ');
+            let displayedName = '';
             
-            const teamId = teamSelect.value;
-            const biddingTeam = teams.find(t => t.id === teamId);
-
-            if (!biddingTeam) {
-                showMessage("Selecciona tu equipo para pujar.", 'error');
-                return;
-            }
-            if (biddingTeam.ownerId !== userId) {
-                showMessage("No eres el dueño de este equipo.", 'error');
-                return;
-            }
-
-            let newBid = 0;
-            if (button.id === 'bid-initial-btn') {
-                newBid = currentAuction.player.value;
-            } else {
-                newBid = currentAuction.currentBid + (button.dataset.bid === '3000000' ? 3000000 : 8000000);
-            }
-
-            if (newBid <= currentAuction.currentBid) {
-                showMessage("Tu puja debe ser mayor que la puja actual.", 'error');
-                return;
-            }
-
-            if (biddingTeam.budget < newBid) {
-                showMessage(`Presupuesto insuficiente. Te faltan ${formatCurrency(newBid - biddingTeam.budget)}.`, 'error');
-                return;
-            }
-            if (biddingTeam.players.length >= 22) {
-                showMessage("Tu equipo ya está lleno (22 jugadores).", 'error');
-                return;
-            }
-
-            try {
-                await updateDoc(doc(db, `artifacts/${appId}/public/data/draft`, DRAFT_STATE_DOC_ID), {
-                    currentBid: newBid,
-                    currentBidderId: biddingTeam.id,
-                    timer: 30, // Reset timer on new bid
-                });
-            } catch (e) {
-                console.error("Error placing bid:", e);
-                showMessage("Error al realizar la puja.", 'error');
-            }
-        }
-
-        async function handleHint() {
-            if (currentAuction.hintsUsed >= 2) {
-                hintBtn.disabled = true;
-                return;
-            }
-
-            try {
-                const newHintsUsed = currentAuction.hintsUsed + 1;
-                const newLettersToShow = currentAuction.lettersToShow + 2;
-                const newPlayerValue = currentAuction.player.value + 5000000;
-                let newBid = currentAuction.currentBid;
-
-                if (newBid < newPlayerValue) {
-                    newBid = newPlayerValue;
-                }
-
-                await updateDoc(doc(db, `artifacts/${appId}/public/data/draft`, DRAFT_STATE_DOC_ID), {
-                    hintsUsed: newHintsUsed,
-                    lettersToShow: newLettersToShow,
-                    "player.value": newPlayerValue,
-                    currentBid: newBid,
-                });
-
-                if (newHintsUsed >= 2) {
-                    hintBtn.disabled = true;
-                }
-            } catch (e) {
-                console.error("Error using hint:", e);
-                showMessage("Error al usar la pista.", 'error');
-            }
-        }
-
-        async function endAuction() {
-            if (currentAuction.currentBidderId) {
-                const winningTeamRef = doc(db, `artifacts/${appId}/public/data/teams`, currentAuction.currentBidderId);
-                const winningTeamSnap = await getDoc(winningTeamRef);
-                const winningTeam = winningTeamSnap.data();
-
-                if (winningTeam) {
-                    const updatedPlayers = [...winningTeam.players, currentAuction.player];
-                    const updatedBudget = winningTeam.budget - currentAuction.currentBid;
-                    
-                    try {
-                        await updateDoc(winningTeamRef, {
-                            players: updatedPlayers,
-                            budget: updatedBudget,
-                        });
-                        showMessage(`¡${winningTeam.name} ha ganado la subasta por ${currentAuction.player.name} ${currentAuction.player.lastName}!`, 'success');
-                    } catch (e) {
-                        console.error("Error assigning player:", e);
-                        showMessage("Error al asignar el jugador al equipo.", 'error');
-                    }
-                }
-            } else {
-                showMessage("La subasta terminó sin pujas. El jugador regresa a la piscina.", 'error');
+            displayedName += parts[0].substring(0, revealedFirstNameLength);
+            
+            if (parts.length > 1) {
+                displayedName += ' ';
+                const lastName = parts.slice(1).join(' ');
+                displayedName += lastName.substring(0, revealedLastNameLength);
             }
             
-            setTimeout(async () => {
-                await nextAuction();
-            }, 3000); // 3-second pause
+            const hiddenLength = name.length - displayedName.length;
+            const hiddenPart = '*'.repeat(Math.max(0, hiddenLength));
+
+            document.getElementById('player-name').textContent = (displayedName + hiddenPart).trim();
         }
 
-        function startTimer() {
-            if (currentAuction.interval) clearInterval(currentAuction.interval);
-            const timerDisplay = document.getElementById('timer-display');
+        const numberFormatter = new Intl.NumberFormat('es-ES', {
+            style: 'currency',
+            currency: 'USD',
+            minimumFractionDigits: 0,
+            maximumFractionDigits: 0
+        });
+
+        function showMessage(text, type) {
+            const container = document.getElementById('message-container');
+            const messageText = document.getElementById('message-text');
             
-            const timerDocRef = doc(db, `artifacts/${appId}/public/data/draft`, DRAFT_STATE_DOC_ID);
-
-            const intervalId = setInterval(async () => {
-                const docSnap = await getDoc(timerDocRef);
-                const currentTimer = docSnap.data()?.timer || 0;
-                
-                if (currentTimer <= 1) {
-                    clearInterval(intervalId);
-                    endAuction();
-                    return;
-                }
-                
-                try {
-                    await updateDoc(timerDocRef, { timer: currentTimer - 1 });
-                } catch (e) {
-                    console.error("Error updating timer:", e);
-                    clearInterval(intervalId); // Stop timer on error
-                }
-            }, 1000);
-            currentAuction.interval = intervalId;
-        }
-
-        // Funciones de renderizado
-        function renderTeamsList() {
-            teamsListContainer.innerHTML = '';
-            teamSelect.innerHTML = `<option value="">Selecciona tu equipo</option>`;
-            teams.forEach(team => {
-                const option = document.createElement('option');
-                option.value = team.id;
-                option.textContent = team.name;
-                teamSelect.appendChild(option);
-
-                const teamCard = document.createElement('div');
-                teamCard.className = 'bg-gray-900 rounded-lg shadow-md p-6';
-                teamCard.innerHTML = `
-                    <h3 class="text-xl font-bold text-white">${team.name} <span class="text-sm font-normal text-gray-400">(${team.players.length}/22)</span></h3>
-                    <p class="text-sm text-gray-400 mb-4">Presupuesto: <span class="font-bold text-green-400">${formatCurrency(team.budget)}</span></p>
-                    <ul class="list-disc list-inside space-y-1 text-gray-300">
-                        ${team.players.length > 0 ? team.players.map(p => `<li>${p.name} ${p.lastName} (${p.position})</li>`).join('') : '<li>Sin jugadores aún.</li>'}
-                    </ul>
-                `;
-                teamsListContainer.appendChild(teamCard);
-            });
-        }
-
-        function renderAuctionUI() {
-            const player = currentAuction.player;
-            if (!player) {
-                auctionArea.classList.add('hidden');
-                return;
+            let bgColor = '';
+            let textColor = '';
+            if (type === 'success') {
+                bgColor = 'bg-emerald-600';
+                textColor = 'text-white';
+            } else if (type === 'info') {
+                bgColor = 'bg-indigo-600';
+                textColor = 'text-white';
+            } else if (type === 'error') {
+                bgColor = 'bg-rose-600';
+                textColor = 'text-white';
             }
-            auctionArea.classList.remove('hidden');
 
-            const displayedFirstName = player.name.substring(0, currentAuction.lettersToShow);
-            const displayedLastName = player.lastName.substring(0, currentAuction.lettersToShow);
-            const dots = '...';
-
-            playerCard.innerHTML = `
-                <div class="flex flex-col items-center">
-                    <div class="text-5xl font-bold text-white mb-2">
-                        ${displayedFirstName}${dots} ${displayedLastName}${dots}
-                    </div>
-                    <img src="${getFlagUrl(player.nationality)}" alt="${player.nationality} flag" class="w-16 h-12 rounded-md mb-2">
-                    <span class="text-gray-400 text-sm">${player.position}</span>
-                </div>
-            `;
-            const currentBidderName = currentAuction.currentBidderId ? teams.find(t => t.id === currentAuction.currentBidderId)?.name : 'Nadie ha pujado aún';
-            bidInfo.innerHTML = `
-                <h4 class="text-2xl font-bold text-white text-center">Puja Actual</h4>
-                <span class="text-4xl font-extrabold text-green-400">${formatCurrency(currentAuction.currentBid)}</span>
-                <p class="text-gray-400">Líder: ${currentBidderName}</p>
-            `;
-            document.getElementById('timer-display').textContent = `${currentAuction.timer}s`;
-            initialBidBtn.textContent = `Pujar ${formatCurrency(currentAuction.player.value)}`;
-            hintsLeftSpan.textContent = 2 - currentAuction.hintsUsed;
-            hintBtn.disabled = currentAuction.hintsUsed >= 2;
-        }
-
-        function checkDraftReadiness() {
-            if (teams.length > 0) {
-                startDraftBtn.classList.remove('hidden');
-            } else {
-                startDraftBtn.classList.add('hidden');
-            }
-        }
-
-        function showMessage(message, type = 'success') {
-            messageBox.textContent = message;
-            messageBox.className = `p-4 rounded-lg mt-4 text-white ${type === 'success' ? 'bg-green-500' : 'bg-red-500'}`;
-            messageBox.classList.remove('hidden');
+            container.className = `mt-6 p-4 rounded-lg text-sm font-bold shadow-lg transition-all duration-300 ease-in-out ${bgColor} ${textColor} block`;
+            messageText.innerHTML = text;
+            
             setTimeout(() => {
-                messageBox.classList.add('hidden');
-            }, 5000);
+                container.classList.add('hidden');
+                container.classList.remove('block');
+            }, 3000);
         }
 
-        // Utilidades
-        function formatCurrency(value) {
-            return new Intl.NumberFormat('es-CL', { style: 'currency', currency: 'CLP', maximumFractionDigits: 0 }).format(value);
-        }
-
-        function shuffleArray(array) {
+        function shuffle(array) {
             for (let i = array.length - 1; i > 0; i--) {
                 const j = Math.floor(Math.random() * (i + 1));
                 [array[i], array[j]] = [array[j], array[i]];
             }
-            return array;
         }
 
-        function getFlagUrl(nationality) {
-            const flagMap = {
-                'ARG': 'https://flagcdn.com/w160/ar.png', 'BRA': 'https://flagcdn.com/w160/br.png', 'ENG': 'https://flagcdn.com/w160/gb-eng.png',
-                'ESP': 'https://flagcdn.com/w160/es.png', 'FRA': 'https://flagcdn.com/w160/fr.png', 'GER': 'https://flagcdn.com/w160/de.png',
-                'POR': 'https://flagcdn.com/w160/pt.png', 'BEL': 'https://flagcdn.com/w160/be.png', 'NED': 'https://flagcdn.com/w160/nl.png',
-                'ITA': 'https://flagcdn.com/w160/it.png', 'URU': 'https://flagcdn.com/w160/uy.png', 'CRO': 'https://flagcdn.com/w160/hr.png',
-                'SCO': 'https://flagcdn.com/w160/gb-sct.png', 'CAN': 'https://flagcdn.com/w160/ca.png', 'SUI': 'https://flagcdn.com/w160/ch.png',
-                'AUT': 'https://flagcdn.com/w160/at.png', 'SVK': 'https://flagcdn.com/w160/sk.png', 'NOR': 'https://flagcdn.com/w160/no.png',
-                'NGA': 'https://flagcdn.com/w160/ng.png', 'EGY': 'https://flagcdn.com/w160/eg.png', 'POL': 'https://flagcdn.com/w160/pl.png',
-                'GEO': 'https://flagcdn.com/w160/ge.png', 'KOR': 'https://flagcdn.com/w160/kr.png', 'SRB': 'https://flagcdn.com/w160/rs.png',
-                'SLO': 'https://flagcdn.com/w160/si.png', 'CMR': 'https://flagcdn.com/w160/cm.png', 'GHA': 'https://flagcdn.com/w160/gh.png',
-                'CIV': 'https://flagcdn.com/w160/ci.png', 'HUN': 'https://flagcdn.com/w160/hu.png',
-            };
-            return flagMap[nationality] || 'https://flagcdn.com/w160/un.png';
+        function showSection(sectionId) {
+            document.getElementById('player-select-section').classList.add('hidden');
+            document.getElementById('player-names-section').classList.add('hidden');
+            document.getElementById('auction-section').classList.add('hidden');
+            document.getElementById('back-btn-global').classList.add('hidden');
+
+            document.getElementById(sectionId).classList.remove('hidden');
+
+            if (sectionId !== 'player-select-section') {
+                document.getElementById('back-btn-global').classList.remove('hidden');
+            }
         }
+
+        function renderAuctionScreen() {
+            const auctionTimerElement = document.getElementById('auction-timer');
+            const playerInfoDiv = document.getElementById('player-info');
+            const playerFlagImg = document.getElementById('flag-img');
+            const playerCountryElement = document.getElementById('player-country');
+            const playerPositionElement = document.getElementById('player-position');
+            const currentBidTextElement = document.getElementById('current-bid-text');
+            const highestBidderTextElement = document.getElementById('highest-bidder-text');
+            const bidButtonsContainer = document.getElementById('bid-buttons');
+            const playerInventoriesContainer = document.getElementById('player-inventories');
+            const hintBtn = document.getElementById('hint-btn');
+            const scoutBtn = document.getElementById('scout-btn');
+            const scoutReportDiv = document.getElementById('scout-report');
+
+            if (!currentAuctionPlayer) {
+                auctionTimerElement.textContent = "¡Fin del Draft!";
+                playerInfoDiv.classList.add('hidden');
+                bidButtonsContainer.innerHTML = '';
+                hintBtn.classList.add('hidden');
+                scoutBtn.classList.add('hidden');
+                return;
+            }
+
+            playerInfoDiv.classList.remove('hidden');
+            scoutBtn.classList.remove('hidden');
+            
+            updateDisplayedName(); 
+            playerFlagImg.src = getFlagURL(currentAuctionPlayer.nationality);
+            playerFlagImg.alt = `Bandera de ${currentAuctionPlayer.nationality}`;
+            playerCountryElement.textContent = currentAuctionPlayer.nationality;
+            playerPositionElement.textContent = currentAuctionPlayer.position;
+            currentBidTextElement.textContent = numberFormatter.format(currentBid);
+            highestBidderTextElement.textContent = highestBidder ? `Postor más alto: ${highestBidder.name}` : 'Nadie ha pujado aún';
+            
+            bidButtonsContainer.innerHTML = '';
+            players.forEach((player, index) => {
+                const bidAmount = currentBid + BID_INCREMENT; 
+                const button = document.createElement('button');
+                
+                button.textContent = `Pujar (${player.name})`; 
+                button.className = "w-full p-3 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-bold transition duration-300 ease-in-out transform hover:scale-105 shadow-md focus:outline-none";
+                
+                if (player.budget < bidAmount || (highestBidder && highestBidder.name === player.name)) {
+                    button.disabled = true;
+                    button.textContent = highestBidder && highestBidder.name === player.name ? `Ya eres el postor más alto` : `Sin fondos suficientes`;
+                    button.className = "w-full p-3 rounded-lg bg-slate-700 text-slate-500 cursor-not-allowed border border-slate-600";
+                } else {
+                    button.addEventListener('click', () => handleBid(index, bidAmount));
+                }
+                bidButtonsContainer.appendChild(button);
+            });
+
+            hintBtn.classList.remove('hidden');
+            if (hintsUsed >= 2) {
+                hintBtn.disabled = true;
+                hintBtn.classList.add('cursor-not-allowed', 'opacity-50');
+            } else {
+                hintBtn.disabled = false;
+                hintBtn.classList.remove('cursor-not-allowed', 'opacity-50');
+            }
+
+            // Ocultar reporte de ojeador si es un jugador nuevo
+            if(scoutReportDiv.dataset.playerId !== currentAuctionPlayer.name) {
+                scoutReportDiv.classList.add('hidden');
+                scoutReportDiv.innerHTML = "";
+            }
+
+            renderPlayerInventories(playerInventoriesContainer);
+        }
+
+        // Extraído para poder re-renderizar solo los equipos al usar "Analizar Química"
+        function renderPlayerInventories(container) {
+            container.innerHTML = '';
+            players.forEach(player => {
+                const playerDiv = document.createElement('div');
+                playerDiv.className = "mb-4 p-4 rounded-lg bg-slate-900 shadow-inner text-left border border-slate-800";
+                
+                // Header del Equipo
+                const headerDiv = document.createElement('div');
+                headerDiv.className = "flex justify-between items-center mb-2 border-b border-slate-800 pb-2";
+                headerDiv.innerHTML = `
+                    <h4 class="font-bold text-lg text-indigo-400">${player.name}</h4>
+                    <span class="text-xs text-emerald-500 font-bold bg-emerald-500/10 px-2 py-1 rounded border border-emerald-500/20">${numberFormatter.format(player.budget)}</span>
+                `;
+                playerDiv.appendChild(headerDiv);
+                
+                // Lista de Jugadores
+                const itemList = document.createElement('ul');
+                itemList.className = "space-y-1 list-disc list-inside text-slate-300 text-sm";
+                if (player.items.length === 0) {
+                    itemList.innerHTML = `<li class="text-slate-500 italic list-none">Sin jugadores fichados</li>`;
+                } else {
+                    player.items.forEach(item => {
+                        const li = document.createElement('li');
+                        li.textContent = `${item.name} (${item.position})`;
+                        itemList.appendChild(li);
+                    });
+                }
+                playerDiv.appendChild(itemList);
+
+                // ✨ Botón de Analizar Química IA
+                if (player.items.length > 0) {
+                    const analyzeBtn = document.createElement('button');
+                    analyzeBtn.className = "mt-4 w-full text-xs bg-indigo-950 hover:bg-indigo-900 border border-indigo-500/30 text-indigo-300 font-bold py-2 px-3 rounded flex items-center justify-center gap-2 transition";
+                    analyzeBtn.innerHTML = `✨ Analizar Química del Equipo`;
+                    
+                    analyzeBtn.onclick = async () => {
+                        analyzeBtn.disabled = true;
+                        analyzeBtn.innerHTML = `<i class="fas fa-circle-notch fa-spin"></i> Analizando tácticas...`;
+
+                        const playerNames = player.items.map(p => p.name).join(', ');
+                        const prompt = `Actúa como un entrenador de fútbol de élite. Analiza la siguiente plantilla: ${playerNames}. Da una opinión experta muy breve (máximo 3 líneas) sobre el estilo de juego que usarían y su mayor fortaleza o debilidad combinada.`;
+                        
+                        const analysis = await callGemini(prompt);
+
+                        let analysisDiv = playerDiv.querySelector('.team-analysis');
+                        if (!analysisDiv) {
+                            analysisDiv = document.createElement('div');
+                            analysisDiv.className = "team-analysis mt-3 p-3 bg-indigo-900/30 border border-indigo-500/20 rounded text-xs text-indigo-200 leading-relaxed";
+                            playerDiv.appendChild(analysisDiv);
+                        }
+                        analysisDiv.innerHTML = `<strong class="text-indigo-400">✨ IA Táctica:</strong><br/>${analysis}`;
+
+                        analyzeBtn.innerHTML = `✨ Analizar Química del Equipo`;
+                        analyzeBtn.disabled = false;
+                    };
+                    playerDiv.appendChild(analyzeBtn);
+                }
+
+                container.appendChild(playerDiv);
+            });
+        }
+        
+        function startCountdown() {
+            timer = 30;
+            const timerElement = document.getElementById('auction-timer');
+            if (timerInterval) clearInterval(timerInterval);
+            timerElement.textContent = `${timer}s`;
+            
+            timerInterval = setInterval(() => {
+                if (!isPaused) {
+                    timer--;
+                    timerElement.textContent = `${timer}s`;
+                    if (timer <= 0) {
+                        clearInterval(timerInterval);
+                        endAuction();
+                    }
+                }
+            }, 1000);
+        }
+
+        function startNextAuction() {
+            if (auctionQueue.length === 0) {
+                showMessage("¡Fin del Draft! El juego ha terminado.", 'success');
+                currentAuctionPlayer = null;
+                renderAuctionScreen();
+                return;
+            }
+            
+            hintsUsed = 0;
+            isPaused = false;
+            
+            const pauseBtn = document.getElementById('pause-btn');
+            pauseBtn.innerHTML = `<i class="fa-solid fa-pause mr-2"></i> Pausar`;
+            pauseBtn.className = "flex items-center justify-center bg-amber-600 hover:bg-amber-700 text-white font-bold py-2 px-4 rounded-lg transition duration-200";
+
+            // Botón de IA a su estado original
+            const scoutBtn = document.getElementById('scout-btn');
+            scoutBtn.innerHTML = `✨ Ojeador IA`;
+            scoutBtn.disabled = false;
+
+            const nextPlayer = auctionQueue.shift();
+            currentAuctionPlayer = nextPlayer;
+            currentBid = currentAuctionPlayer.value;
+            highestBidder = null;
+            
+            const nameParts = currentAuctionPlayer.name.split(' ');
+            revealedFirstNameLength = 1;
+            revealedLastNameLength = nameParts.length > 1 ? 1 : 0;
+
+            renderAuctionScreen();
+            startCountdown();
+        }
+
+        function endAuction() {
+            if (highestBidder) {
+                highestBidder.budget -= currentBid;
+                highestBidder.items.push(currentAuctionPlayer);
+                showMessage(`¡${highestBidder.name} ficha a ${currentAuctionPlayer.name} por ${numberFormatter.format(currentBid)}!`, 'success');
+            } else {
+                showMessage(`Nadie ofertó por ${currentAuctionPlayer.name}. Regresa a la agencia libre.`, 'info');
+                auctionQueue.push(currentAuctionPlayer); 
+                shuffle(auctionQueue);
+            }
+            
+            currentAuctionPlayer = null;
+            renderAuctionScreen();
+
+            setTimeout(() => {
+                startNextAuction();
+            }, 3000);
+        }
+
+        function handleBid(playerIndex, bidAmount) {
+            const player = players[playerIndex];
+            if (player.budget >= bidAmount) {
+                currentBid = bidAmount;
+                highestBidder = player;
+                startCountdown(); 
+                renderAuctionScreen();
+            } else {
+                showMessage("No tienes presupuesto suficiente.", 'error');
+            }
+        }
+
+        function handleHint() {
+            if (!highestBidder) {
+                showMessage("Debe haber una puja inicial para usar la pista.", 'error');
+                return;
+            }
+
+            if (highestBidder.budget < HINT_COST) {
+                showMessage(`${highestBidder.name} no tiene presupuesto para comprar una pista.`, 'error');
+                return;
+            }
+
+            if (hintsUsed < 2) {
+                highestBidder.budget -= HINT_COST;
+                hintsUsed++;
+                
+                const nameParts = currentAuctionPlayer.name.split(' ');
+                if (revealedFirstNameLength < nameParts[0].length) {
+                    revealedFirstNameLength++;
+                }
+                if (nameParts.length > 1 && revealedLastNameLength < nameParts.slice(1).join(' ').length) {
+                    revealedLastNameLength++;
+                }
+
+                startCountdown(); 
+                renderAuctionScreen();
+                showMessage(`Pista revelada para ${highestBidder.name}.`, 'info');
+            }
+        }
+
+        // --- Manejo del Ojeador IA (Gemini) ---
+        document.getElementById('scout-btn').addEventListener('click', async () => {
+            if (!currentAuctionPlayer) return;
+            const btn = document.getElementById('scout-btn');
+            const reportDiv = document.getElementById('scout-report');
+
+            btn.disabled = true;
+            btn.innerHTML = `<i class="fa-solid fa-circle-notch fa-spin mr-2"></i> Consultando Red de Ojeadores...`;
+
+            // Pausar el juego para leer el reporte tranquilamente
+            if(!isPaused) togglePause();
+
+            const prompt = `Actúa como un experto ojeador de fútbol. Escribe un reporte de ojeo muy breve y emocionante (máximo 3 líneas) sobre el jugador ${currentAuctionPlayer.name} (${currentAuctionPlayer.position}, de ${currentAuctionPlayer.nationality}). Destaca su mayor fortaleza en el campo sin decir su nombre directamente si quieres mantener un poco el misterio.`;
+
+            const report = await callGemini(prompt);
+
+            reportDiv.innerHTML = `<strong class="text-indigo-400"><i class="fa-solid fa-file-contract"></i> ✨ Reporte de la Red de Ojeadores:</strong><br/><span class="mt-2 block">${report}</span>`;
+            reportDiv.classList.remove('hidden');
+            reportDiv.dataset.playerId = currentAuctionPlayer.name;
+
+            btn.innerHTML = `<i class="fa-solid fa-check mr-2"></i> Reporte Completado`;
+            // Dejarlo deshabilitado para este jugador (solo un uso por jugador para no gastar API)
+        });
+
+        function togglePause() {
+            isPaused = !isPaused;
+            const pauseBtn = document.getElementById('pause-btn');
+            if (isPaused) {
+                pauseBtn.innerHTML = `<i class="fa-solid fa-play mr-2"></i> Reanudar`;
+                pauseBtn.classList.remove('bg-amber-600', 'hover:bg-amber-700');
+                pauseBtn.classList.add('bg-emerald-600', 'hover:bg-emerald-700');
+                showMessage("Subasta pausada temporalmente.", 'info');
+            } else {
+                pauseBtn.innerHTML = `<i class="fa-solid fa-pause mr-2"></i> Pausar`;
+                pauseBtn.classList.remove('bg-emerald-600', 'hover:bg-emerald-700');
+                pauseBtn.classList.add('bg-amber-600', 'hover:bg-amber-700');
+                showMessage("Subasta reanudada.", 'info');
+            }
+        }
+
+        // --- Event Listeners ---
+        document.getElementById('start-draft-btn').addEventListener('click', () => {
+            const numPlayers = parseInt(document.getElementById('num-players').value);
+            const container = document.getElementById('player-name-inputs');
+            container.innerHTML = '';
+            
+            for (let i = 0; i < numPlayers; i++) {
+                const inputGroup = document.createElement('div');
+                inputGroup.className = 'flex flex-col text-left space-y-1';
+                inputGroup.innerHTML = `
+                    <label class="text-xs font-bold text-slate-400 uppercase tracking-wider">Nombre del Equipo ${i + 1}</label>
+                    <input type="text" placeholder="Ej. Real Madrid, Arsenal..." class="w-full p-3 rounded-lg bg-slate-800 border border-slate-700 text-white focus:outline-none focus:border-indigo-500 transition duration-200">
+                `;
+                container.appendChild(inputGroup);
+            }
+            showSection('player-names-section');
+        });
+
+        document.getElementById('confirm-names-btn').addEventListener('click', () => {
+            const inputs = document.getElementById('player-name-inputs').querySelectorAll('input');
+            players = [];
+            let valid = true;
+            
+            inputs.forEach(input => {
+                const name = input.value.trim();
+                if (!name) valid = false;
+                players.push({
+                    name: name,
+                    budget: INITIAL_BUDGET,
+                    items: []
+                });
+            });
+
+            if (!valid) {
+                showMessage("Por favor, ponle nombre a todos los equipos.", "error");
+                return;
+            }
+
+            auctionQueue = [...itemPool];
+            shuffle(auctionQueue);
+            
+            showSection('auction-section');
+            startNextAuction();
+        });
+
+        document.getElementById('hint-btn').addEventListener('click', handleHint);
+        document.getElementById('pause-btn').addEventListener('click', togglePause);
+
+        document.getElementById('back-btn-global').addEventListener('click', () => {
+            const playerNamesSection = document.getElementById('player-names-section');
+            const auctionSection = document.getElementById('auction-section');
+            
+            if (!playerNamesSection.classList.contains('hidden')) {
+                showSection('player-select-section');
+            } else if (!auctionSection.classList.contains('hidden')) {
+                if (timerInterval) clearInterval(timerInterval);
+                showSection('player-names-section');
+            }
+        });
+
     </script>
 </body>
 </html>
-
